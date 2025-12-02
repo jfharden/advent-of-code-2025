@@ -1,0 +1,201 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;;                   228 colour clocks
+;;    <------------------------------------------------>
+;;
+;;    |================================================|
+;;    |            VERTICAL SYNC                       | 3 x VSYNC scanlines 
+;;    |================================================|
+;;    |                                                |
+;;    |                                                |
+;;    |            VERTICAL BLANK                      | 37 x VBLANK scanlines 
+;;    |                                                |
+;;    |                                                |
+;;    |================================================|
+;;    |            |                                   | 
+;;    |            |                                   | 
+;;    |   HORIZ.   |                                   | 192 x Visible area (NTSC)
+;;    |   BLANK    |                                   |       scanlines
+;;    |            |                                   | 
+;;    | <--------> | <-------------------------------> | 242 x Visible area (PAL)
+;;    | 68 colour  |        160 colour clocks          |       scanlines
+;;    |  clocks    |                                   | 
+;;    |            |                                   | 
+;;    |            |                                   |
+;;    |            |                                   | 
+;;    |================================================|
+;;    |                                                |
+;;    |                                                | 30 x OVERSCAN scanlines
+;;    |                                                |
+;;    |================================================|
+;;
+;;    <------------------------------------------------>
+;;                      76 CPU cycles
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    processor 6502
+
+    include "includes/vcs.h"
+    include "includes/macro.h"
+
+    seg code
+    org $F000
+
+Start:
+    CLEAN_START
+
+NextFrame:
+    ;; Set register a to value 2
+    lda #2
+    ;; Store value of register a (#2) to the TIA VBLANK to enable the VBLANK
+    sta VBLANK
+    ;; Store value of register a (#2) to the TIA VSYNC memory address to enable VSYNC
+    sta VSYNC
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Generate the 3 lines of empty VSYNC
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    sta WSYNC   ; Set WSYNC to force the cpu to wait for the end of the 1st scanline
+    sta WSYNC   ; Set WSYNC to force the cpu to wait for the end of the 2nd scanline
+    sta WSYNC   ; Set WSYNC to force the cpu to wait for the end of the 3rd scanline
+
+    lda #0
+    sta VSYNC   ; We have now rendered the VSYNC
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Generate the 37 lines of VBLANK
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ldx #37
+LoopVBlank:
+    sta WSYNC   ; Set WSYNC to force the cpu to wait for the end of the current VBLANK line
+    dex
+    bne LoopVBlank
+
+    stx VBLANK  ; Disable VBLANK (x is currently 0 from the loop above)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Draw the play field
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ldx #242
+LoopVisible: ; Just skip it for now
+    stx COLUBK  ; Set the background colour to the current loop iteration number
+    sta WSYNC
+    dex
+    bne LoopVisible
+    
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Draw the Overscan - turn on vertical blank first
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    lda #2
+    sta VBLANK
+
+    ldx #30
+LoopOverscan:
+    sta WSYNC
+    dex
+    bne LoopOverscan
+
+    jmp NextFrame
+
+Number0:
+    byte #%01111110 ;  ###### 
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%01111110 ;  ###### 
+
+
+Number1:
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #  
+
+Number2:
+    byte #%11111111 ; ########
+    byte #%00000001 ;        # 
+    byte #%00000001 ;        # 
+    byte #%11111111 ; ########
+    byte #%10000000 ; #       
+    byte #%10000000 ; #       
+    byte #%11111111 ; ########
+
+Number3:
+    byte #%11111111 ; ########
+    byte #%00000001 ;        # 
+    byte #%00000001 ;        # 
+    byte #%11111111 ; ########
+    byte #%10000000 ;        #
+    byte #%10000000 ;        #
+    byte #%11111111 ; ########
+
+Number4:
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      # 
+    byte #%10000001 ; #      # 
+    byte #%11111111 ; ########
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+
+
+Number5:
+    byte #%11111111 ; ########
+    byte #%10000000 ; #        
+    byte #%10000000 ; #        
+    byte #%11111111 ; ########
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%11111111 ; ########
+
+Number6:
+    byte #%11111111 ; ########
+    byte #%10000000 ; #        
+    byte #%10000000 ; #        
+    byte #%11111111 ; ########
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%11111111 ; ########
+
+
+Number7:
+    byte #%11111111 ; ########
+    byte #%00000001 ;        # 
+    byte #%00000001 ;        # 
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+
+Number8:
+    byte #%11111111 ; ########
+    byte #%10000001 ; #      # 
+    byte #%10000001 ; #      # 
+    byte #%11111111 ; ########
+    byte #%10000001 ; #      #
+    byte #%10000001 ; #      #
+    byte #%11111111 ; ########
+
+Number9:
+    byte #%11111111 ; ########
+    byte #%10000001 ; #      # 
+    byte #%10000001 ; #      # 
+    byte #%11111111 ; ########
+    byte #%00000001 ;        #
+    byte #%00000001 ;        #
+    byte #%11111111 ; ########
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    org $FFFC
+    .word Start
+    .word Start
