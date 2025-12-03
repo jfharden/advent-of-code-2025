@@ -1,5 +1,5 @@
 build:
-	dasm day1.asm -f3 -v0 -ocart.bin
+	dasm day1.dasm -f3 -v0 -ocart.bin
 
 run: run-pal
 
