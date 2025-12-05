@@ -101,8 +101,6 @@
     lda #0                        ; 2         - 11
     jmp .LoadUnits                ; 3         - 14
 
-    ; TODO - instead of multiplying by 10, I need to convert the binary number into a binary coded
-    ; decimal number of 10s, I think I can do this by simply 4 shift lefts
 .SomeTens
     ; Convert to BCD by shifting our single digit 4 left to put it in the left most nibble
     asl                           ; 2         - 12
@@ -280,55 +278,66 @@ NumberReadCompleteWithThreeDigits:
 
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
 
-  ; Left or right
-  lda Direction   ; 3   - 8 - (8 includes the next scanline from above)
-  cmp #$4c        ; 2   - 10 - L in ascii
-  beq LeftTurn    ; 2+1 - 12/13
+  CALCULATE_NUMBER_OF_TENS_AND_UNITS  ; 23/31 - 28/36 (incl 5 from next scaline above) - Load the BCD tens and units from the current line
+  cmp #0                              ; 2     - 38 (worst case only) - If the number of notches is 0 then just finish, direction doesn't matter
+  bne CheckDirection                  ; 2+1   - 40/41
+  jmp LoopVBlank                      ; 3     - 43
 
-  cmp #$52        ; R in ascii
-  beq RightTurn
+CheckDirection:
+  ; Left or right - cycles only counting worst case from CALCULATE_NUMBER_OF_TENS_AND_UNITS
+  ldx Direction                       ; 3   - 44
+  cpx #$4c                            ; 2   - 46    - L in ascii
+  beq LeftTurn                        ; 2+1 - 48/49
+  jmp RightTurn                       ; 3   - 51    - If it wasn't left, it must be right so just jump
 
-; TODO - Turn the number of notches that has been read, not just the whole rotations
+; Arrive here at 48 cycles
+; The accumulator contains the number of tens and units in BCD
 LeftTurn:
-  ; Load the numbers of 10s
-                                      ; 23 cycles if no test, 31 cycles if some tens
-  CALCULATE_NUMBER_OF_TENS_AND_UNITS  ; 23/31 - 23/31 -
-  cmp #0                              ; 2     - 25/33 - If the number of notches is 0 then just finish
-  beq LeftTensFinished                ; 2+1   - 28/27/35 (zero/zero tens/some tens) - This also infers there were no tens, so 23 cycles from load tens and units
-  REPEAT 10
-    NOP
-  REPEND
-                                              ; Only recording the some tens amount since it's the worst case
-  sta Temp                            ; 3     - 38
-  lda CurrentPosition                 ; 3     - 41
-  cmp #0                              ; 2     - 43      - If the current position is 0 it has already been accounted for
-  beq JustSubtractLeftTurn            ; 2+1   - 45/46  - so just do the subtraction, but don't increment the counter for having passed 0
+  sta Temp                            ; 3     - 52
+  lda CurrentPosition                 ; 3     - 55
+  cmp #0                              ; 2     - 57     - If the current position is 0 it has already been accounted for
+  beq JustSubtractLeftTurn            ; 2+1   - 59/60  - so just do the subtraction, but don't increment the counter for having passed 0
 
   ; Left turn means subtract                  ; No tens/some tens
-  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12    - 57
-  bcc LandedOnOrPassedZeroTurningLeft ; 2+1   - 59/60 - If the carry flag was unset by the subtraction then we rolled over and passed zero
-  cmp #0                              ; 2     - 61    - but did we land on 0
-  bne LeftTensFinished                ; 2+1   - 63/64 - If we didn't land on zero then skip
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12    - 58
+  bcc LandedOnOrPassedZeroTurningLeft ; 2+1   - 60/61 - If the carry flag was unset by the subtraction then we rolled over and passed zero
+  cmp #0                              ; 2     - 62    - but did we land on 0
+  beq LandedOnOrPassedZeroTurningLeft ; 2+1   - 64/65 - If we didn't land on zero then skip
+  jmp LoopVBlank                      ; 3     - 67
 
-; When we get here it's either 60 or 63 cycles, will assume worst case of 63
+; When we get here it's either 60 or 64 cycles, will assume worst case of 64
 LandedOnOrPassedZeroTurningLeft:
-  lda #1                              ; 2   - 65
-  sta IncrementBy                     ; 3   - 68
+  lda #1                              ; 2   - 66
+  sta IncrementBy                     ; 3   - 69
   NEXT_SCANLINE                       ; 2 previous scanline, 5 next scanline
-  LANDED_ON_ZERO                      ; 16 to 56
-  jmp LeftTensFinished
+  LANDED_ON_ZERO                      ; 16 to 56 - 16-56
+  jmp LoopVBlank                      ; 3        - 59
 
-; When we get here it's 46 cycles
+; Arrive here at 59 cycles
 JustSubtractLeftTurn:
-  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 58
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 71
+  jmp LoopVBlank                      ; 3   - 74
 
-LeftTensFinished:
-  NEXT_SCANLINE
-
-; TODO - Turn the number of notches that has been read, not just the whole rotations
+; Arrive here at 50 cycles
+; The accumulator contains the number of tens and units in BCD
 RightTurn:
+  sta Temp              ; 3   - 53
+  lda CurrentPosition   ; 3   - 56
+  sed                   ; 2   - 58
+  clc                   ; 2   - 60
+  adc Temp              ; 3   - 63
+  sta CurrentPosition   ; 3   - 66
+  cld                   ; 2   - 68
+  bcc LoopVBlank        ; 2+1 - 70/71 ; No carry meaning we didn't go from 99 to 0, so no landing on 0
 
+  NEXT_SCANLINE         ; 2 from previous scanline, 5 from next scanline
+  lda #1                ; 2   - 7  (including 5 from NEXT_SCANLINE)
+  sta IncrementBy       ; 3   - 10
+  LANDED_ON_ZERO        ; 16 to 54 - 26 to 64
+
+; Arrive here at: 74 cycles worst case from left turn
 LoopVBlank:
+  ; Loop away the remaining scanlines until the visible portion of the display
   NEXT_SCANLINE  ; 2 previous scanline, 5 next scanline
   bne LoopVBlank ; 3
 
