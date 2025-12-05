@@ -59,14 +59,15 @@
     dec ScanlineNumber      ; 5      - 7
   ENDM
 
-  ; Takes 24 cycles
+  ; Takes 13 cycles if only the low byte needed incrementing
+  ; or 24 cycles if there is overflow on the low byte and the high byte needs incrementing
   MAC INC_INPUT_POINTER
                                     ; Cycles - Total  - Notes
     clc                             ; 2      - 2
     lda CurrentInputPosPointer      ; 3      - 5
     adc IncrementBy                 ; 3      - 8
     sta CurrentInputPosPointer      ; 3      - 11
-    bcc .IncrementFinished          ; 2+1    - 14
+    bcc .IncrementFinished          ; 2+1    - 13/14
 
     clc                             ; 2      - 16
     lda CurrentInputPosPointer+1    ; 3      - 19
@@ -89,6 +90,46 @@
 .WholeRotationsFinished:
   ENDM
 
+  ; Leaves the total number of notches in BCD in A, as loaded from the tens and units columns
+  ; Takes either 23 cycles if there are no tens, or 31 if there are
+  MAC CALCULATE_NUMBER_OF_TENS_AND_UNITS
+    ; Load the numbers of 10s
+    lda NotchesToMove+1           ; 3         - 3    - Load the number of 10s (in ascii) into the accumulator
+    sec                           ; 2         - 5
+    sbc #48                       ; 2         - 7    - Subtract 48 from the ascii value to get the corrent binary number
+    bpl .SomeTens                 ; 2 + 1     - 9/10 - If it's negative then it was binary 0 meaning no digit
+    lda #0                        ; 2         - 11
+    jmp .LoadUnits                ; 3         - 14
+
+    ; TODO - instead of multiplying by 10, I need to convert the binary number into a binary coded
+    ; decimal number of 10s, I think I can do this by simply 4 shift lefts
+.SomeTens
+    ; Convert to BCD by shifting our single digit 4 left to put it in the left most nibble
+    asl                           ; 2         - 12
+    asl                           ; 2         - 14
+    asl                           ; 2         - 16
+    asl                           ; 2         - 18
+
+.LoadUnits                                    ; Cycles if no tens/Cycles if tens
+    sta Temp                      ; 3         - 13/21 - Save the tens
+    ; Now load the units
+    lda NotchesToMove+2           ; 3         - 16/24
+    sec                           ; 2         - 18/26
+    sbc #48                       ; 2         - 20/28
+    ; The units of the number cannot be missing (i.e. binary 0) so just use it at face value
+    ora Temp                      ; 3        -  23/31 - OR the units in the accumulator (which can only be in the low nibble)
+                                  ;          -        - with the tens in the Temp location which can only be in the high nibble
+  ENDM
+
+  ; Takes 12 cycles
+  MAC SUBTRACT_CURRENT_POSITION_LEFT_TURN
+    sed                                 ; 2   -  2 - Enable binary coded deciman
+    sec                                 ; 2   -  4 -
+    sbc Temp                            ; 3   -  7 - Subtract the tens from the current position
+    sta CurrentPosition                 ; 3   - 10
+    cld                                 ; 2   - 12 - Disable binary coded decimal
+  ENDM
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Define variables for use in RAM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -105,6 +146,7 @@ NotchesToMove           ds 3 ; Allocate enough bytes to store 3 digits for rotat
 CurrentPosition         byte ; Allocate space for the current position of the dial
 Complete                byte ; Allocate space for a flag saying that processing the input is complete
 IncrementBy             byte ; Allocate space for a variable to store how much to incremnet something by (used by multiple macros)
+Temp                    byte ; Allocate some temporary working space
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Start the ROM
@@ -120,7 +162,8 @@ Start:
   sta COLUBK  ; Set the background colour to black
   lda #11
   sta NumberHeight
-  lda #50
+  ; lda #50
+  lda #%01010000 ; 50 in binary coded decimal
   sta CurrentPosition
 
   lda #<PuzzleInput
@@ -238,15 +281,49 @@ NumberReadCompleteWithThreeDigits:
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
 
   ; Left or right
-  lda Direction
-  cmp #$4c        ; L in ascii
-  beq LeftTurn
+  lda Direction   ; 3   - 8 - (8 includes the next scanline from above)
+  cmp #$4c        ; 2   - 10 - L in ascii
+  beq LeftTurn    ; 2+1 - 12/13
 
   cmp #$52        ; R in ascii
   beq RightTurn
 
 ; TODO - Turn the number of notches that has been read, not just the whole rotations
 LeftTurn:
+  ; Load the numbers of 10s
+                                      ; 23 cycles if no test, 31 cycles if some tens
+  CALCULATE_NUMBER_OF_TENS_AND_UNITS  ; 23/31 - 23/31 -
+  cmp #0                              ; 2     - 25/33 - If the number of notches is 0 then just finish
+  beq LeftTensFinished                ; 2+1   - 28/27/35 (zero/zero tens/some tens) - This also infers there were no tens, so 23 cycles from load tens and units
+  REPEAT 10
+    NOP
+  REPEND
+                                              ; Only recording the some tens amount since it's the worst case
+  sta Temp                            ; 3     - 38
+  lda CurrentPosition                 ; 3     - 41
+  cmp #0                              ; 2     - 43      - If the current position is 0 it has already been accounted for
+  beq JustSubtractLeftTurn            ; 2+1   - 45/46  - so just do the subtraction, but don't increment the counter for having passed 0
+
+  ; Left turn means subtract                  ; No tens/some tens
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12    - 57
+  bcc LandedOnOrPassedZeroTurningLeft ; 2+1   - 59/60 - If the carry flag was unset by the subtraction then we rolled over and passed zero
+  cmp #0                              ; 2     - 61    - but did we land on 0
+  bne LeftTensFinished                ; 2+1   - 63/64 - If we didn't land on zero then skip
+
+; When we get here it's either 60 or 63 cycles, will assume worst case of 63
+LandedOnOrPassedZeroTurningLeft:
+  lda #1                              ; 2   - 65
+  sta IncrementBy                     ; 3   - 68
+  NEXT_SCANLINE                       ; 2 previous scanline, 5 next scanline
+  LANDED_ON_ZERO                      ; 16 to 56
+  jmp LeftTensFinished
+
+; When we get here it's 46 cycles
+JustSubtractLeftTurn:
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 58
+
+LeftTensFinished:
+  NEXT_SCANLINE
 
 ; TODO - Turn the number of notches that has been read, not just the whole rotations
 RightTurn:
