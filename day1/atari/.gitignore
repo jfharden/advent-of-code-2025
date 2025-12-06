@@ -1,3 +1,6 @@
 /includes/macro.h
 /includes/vcs.h
-/cart.bin
+/includes/real-input.txt
+/output/*.bin
+/output/*.lst
+/output/*.sym
