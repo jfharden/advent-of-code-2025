@@ -1,8 +1,8 @@
 build:
-	dasm day1.dasm -S -f3 -v0 -ooutput/cart.bin
+	dasm day1.asm -S -f3 -v0 -ooutput/cart.bin
 
 build-debug:
-	dasm day1.dasm -S -f3 -v0 -ooutput/cart.bin -loutput/cart.lst -soutput/cart.sym
+	dasm day1.asm -S -f3 -v0 -ooutput/cart.bin -loutput/cart.lst -soutput/cart.sym
 
 run: run-pal
 
@@ -24,7 +24,7 @@ clean:
 	rm -f output/*.{bin,lst,sym}
 
 build-bank:
-	dasm bank-switching.dasm -S -f3 -v0 -ooutput/bank.bin -loutput/bank.lst -soutput/bank.sym
+	dasm bank-switching.asm -S -f3 -v0 -ooutput/bank.bin -loutput/bank.lst -soutput/bank.sym
 
 debug-bank: build-bank
 	stella -format PAL -debug output/bank.bin
