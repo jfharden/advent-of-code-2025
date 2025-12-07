@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# There is 0xFFA - 0x400 (3066) bytes of space available for puzzle input storage in each 
+# NOTE The F4 bank switching scheme uses F4 - FB as bank switching hotspots, so the
+# highest usable address is 0xFFF3
+# There is 0xFF3 - 0x400 (3059) bytes of space available for puzzle input storage in each 
 # rom bank, so this script takes a simple text file of the real puzzle input and outputs
 # an input file with the input split into upto 8 macros of puzzle input.
 # It will create empty macros where needed to pad to 8.
@@ -119,7 +121,7 @@ while read -r LINE_WITH_NEWLINE; do
   LINE_BYTE_COUNT="$(echo -n "$LINE" | wc -c)"
   BYTE_COUNT="$((BYTE_COUNT + LINE_BYTE_COUNT))"
 
-  if [ "$BYTE_COUNT" -ge 3064 ]; then 
+  if [ "$BYTE_COUNT" -ge 3059 ]; then
     BYTE_COUNT=0
     CURRENT_BANK_NUMBER=$((CURRENT_BANK_NUMBER + 1))
 

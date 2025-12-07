@@ -62,6 +62,10 @@ Temp                    byte ; Allocate some temporary working space
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Start the ROM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 1
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   seg code
   org $1000
   rorg $F000
@@ -459,11 +463,10 @@ PuzzleInputBank1;
   PUZZLE_INPUT_BANK_1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $1FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $1FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -490,11 +493,10 @@ PuzzleInputBank2;
   PUZZLE_INPUT_BANK_2
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $2FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $2FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -515,11 +517,10 @@ PuzzleInputBank3;
   PUZZLE_INPUT_BANK_3
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $3FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $3FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -540,11 +541,10 @@ PuzzleInputBank4;
   PUZZLE_INPUT_BANK_4
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $4FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $4FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -565,11 +565,10 @@ PuzzleInputBank5;
   PUZZLE_INPUT_BANK_5
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $5FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $5FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -590,11 +589,10 @@ PuzzleInputBank6;
   PUZZLE_INPUT_BANK_6
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $6FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $6FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -615,11 +613,10 @@ PuzzleInputBank7;
   PUZZLE_INPUT_BANK_7
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $7FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $7FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
@@ -640,11 +637,10 @@ PuzzleInputBank8;
   PUZZLE_INPUT_BANK_8
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;; Fill ROM to 4KB and set reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $8FFA
-  rorg $FFFA
-  .word Start ; NMI
+  org $8FFC
+  rorg $FFFC
   .word Start ; RESET
   .word Start ; BREAK
 
