@@ -22,3 +22,9 @@ debug-ntsc: build-debug
 
 clean:
 	rm -f output/*.{bin,lst,sym}
+
+build-bank:
+	dasm bank-switching.dasm -S -f3 -v0 -ooutput/bank.bin -loutput/bank.lst -soutput/bank.sym
+
+debug-bank: build-bank
+	stella -format PAL -debug output/bank.bin

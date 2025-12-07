@@ -1,6 +1,6 @@
 /includes/macro.h
 /includes/vcs.h
-/includes/real-input.txt
+/includes/real_puzzle_input.*
 /output/*.bin
 /output/*.lst
 /output/*.sym

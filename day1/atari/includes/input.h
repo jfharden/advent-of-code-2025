@@ -1,30 +1,49 @@
-  MAC PUZZLE_INPUT
-    ; The puzzle input should be written into this macro
-    ; Each line needs to become the 2 lines:
-    ;    dc.b "<LINE>"
-    ;    byte #0
-    ; The very end of the puzzle input should have two byte #0 lines
-    ;
-    ; The input specified below is from the problem text, not a full puzzle input
+; The puzzle input should be written into the macros below
+; Each line needs to be printed as a series of ascii bytes:
+;    dc.b "<LINE>"
+;
+; A bank needs to end with an ASCII N if the data is to continue in the next bank
+;    byte "N"
+;
+; The end of the entire input, irrespective of bank, needs to be an ascii Z
+;    byte "Z"
+;
+  MAC PUZZLE_INPUT_BANK_1
     dc.b "L68"
-    byte #0
     dc.b "L30"
-    byte #0
     dc.b "R48"
-    byte #0
+    dc.b "N"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_2
     dc.b "L5"
-    byte #0
     dc.b "R60"
-    byte #0
+    dc.b "N"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_3
     dc.b "L55"
-    byte #0
     dc.b "L1"
-    byte #0
+    dc.b "N"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_4
     dc.b "L99"
-    byte #0
+    dc.b "N"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_5
     dc.b "R14"
-    byte #0
+    dc.b "N"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_6
     dc.b "L82"
-    byte #0
-    byte #0
+    dc.b "Z"
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_7
+  ENDM
+
+  MAC PUZZLE_INPUT_BANK_8
   ENDM

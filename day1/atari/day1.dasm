@@ -619,6 +619,7 @@ Number9:
   byte #%00000001 ;        #
   byte #%11111111 ; ########
 
+  org $F400
 
 PuzzleInput:
   PUZZLE_INPUT
