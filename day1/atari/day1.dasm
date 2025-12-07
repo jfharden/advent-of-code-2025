@@ -37,7 +37,7 @@
 
   include "includes/vcs.h"
   include "includes/macro.h"
-  include "includes/input.h"
+  include "includes/real_puzzle_input.h"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Define variables for use in RAM

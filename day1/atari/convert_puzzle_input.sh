@@ -121,7 +121,8 @@ while read -r LINE_WITH_NEWLINE; do
   LINE_BYTE_COUNT="$(echo -n "$LINE" | wc -c)"
   BYTE_COUNT="$((BYTE_COUNT + LINE_BYTE_COUNT))"
 
-  if [ "$BYTE_COUNT" -ge 3059 ]; then
+  # Setting max to 3055 to have a touch of wiggle room
+  if [ "$BYTE_COUNT" -ge 3055 ]; then
     BYTE_COUNT=0
     CURRENT_BANK_NUMBER=$((CURRENT_BANK_NUMBER + 1))
 
