@@ -90,15 +90,6 @@ Start:
   lda #>PuzzleInputBank1
   sta CurrentInputPosPointer+1
 
-  ; CLEAN_START ensures these are all 0
-  ; lda #0
-  ; sta TotalTimesOnZero
-  ; sta TotalTimesOnZero+1
-  ; sta TotalTimesOnZero+2
-  ; sta TotalTimesOnZero+3
-  ; sta Complete
-  ; sta BankNumber
-
   lda #1
   sta NextBank
 
