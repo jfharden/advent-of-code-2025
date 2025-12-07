@@ -1,5 +1,4 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
 ;;                   228 colour clocks
 ;;    <------------------------------------------------>
 ;;
@@ -41,99 +40,13 @@
   include "includes/input.h"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Some useful macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ; Takes 14 cycles
-  MAC SET_NUMBER_POINTER_TO_X ; Set X register to the number to display 0-9
-                            ; Cycles - Total - Notes
-    lda NumbersHighByte,X   ; 4      - 4
-    sta NumberPointer       ; 3      - 7
-    lda NumbersLowByte,X    ; 4      - 11
-    sta NumberPointer+1     ; 3      - 14
-  ENDM
-
-  ; Takes 7 cycles
-  MAC NEXT_SCANLINE
-                            ; Cycles - Total - Notes
-    sta WSYNC               ; 2      - 2
-    dec ScanlineNumber      ; 5      - 7
-  ENDM
-
-  ; Takes 13 cycles if only the low byte needed incrementing
-  ; or 24 cycles if there is overflow on the low byte and the high byte needs incrementing
-  MAC INC_INPUT_POINTER
-                                    ; Cycles - Total  - Notes
-    clc                             ; 2      - 2
-    lda CurrentInputPosPointer      ; 3      - 5
-    adc IncrementBy                 ; 3      - 8
-    sta CurrentInputPosPointer      ; 3      - 11
-    bcc .IncrementFinished          ; 2+1    - 13/14
-
-    clc                             ; 2      - 16
-    lda CurrentInputPosPointer+1    ; 3      - 19
-    adc #1                          ; 2      - 21
-    sta CurrentInputPosPointer+1    ; 3      - 24
-    ; If it overflows we are kaput!
-.IncrementFinished
-  ENDM
-
-  ; Takes from 10 to 66 cycles
-  MAC ADD_WHOLE_ROTATIONS
-
-    lda NotchesToMove           ; 3        - 3
-    sec                         ; 2        - 5
-    sbc #48                     ; 2        - 7        - Subtract 48 from the ascii value to get the corrent binary number
-    bmi .WholeRotationsFinished ; 2 + 1    - 9/10     - If it's negative then it was binary 0 meaning no digit
-    sta IncrementBy             ; 3        - 12       - Set up LANDED_ON_ZERO to add the number of hundreds
-
-    LANDED_ON_ZERO              ; 16 to 54 - 28 to 66
-.WholeRotationsFinished:
-  ENDM
-
-  ; Leaves the total number of notches in BCD in A, as loaded from the tens and units columns
-  ; Takes either 23 cycles if there are no tens, or 31 if there are
-  MAC CALCULATE_NUMBER_OF_TENS_AND_UNITS
-    ; Load the numbers of 10s
-    lda NotchesToMove+1           ; 3         - 3    - Load the number of 10s (in ascii) into the accumulator
-    sec                           ; 2         - 5
-    sbc #48                       ; 2         - 7    - Subtract 48 from the ascii value to get the corrent binary number
-    bpl .SomeTens                 ; 2 + 1     - 9/10 - If it's negative then it was binary 0 meaning no digit
-    lda #0                        ; 2         - 11
-    jmp .LoadUnits                ; 3         - 14
-
-.SomeTens
-    ; Convert to BCD by shifting our single digit 4 left to put it in the left most nibble
-    asl                           ; 2         - 12
-    asl                           ; 2         - 14
-    asl                           ; 2         - 16
-    asl                           ; 2         - 18
-
-.LoadUnits                                    ; Cycles if no tens/Cycles if tens
-    sta Temp                      ; 3         - 13/21 - Save the tens
-    ; Now load the units
-    lda NotchesToMove+2           ; 3         - 16/24
-    sec                           ; 2         - 18/26
-    sbc #48                       ; 2         - 20/28
-    ; The units of the number cannot be missing (i.e. binary 0) so just use it at face value
-    ora Temp                      ; 3        -  23/31 - OR the units in the accumulator (which can only be in the low nibble)
-                                  ;          -        - with the tens in the Temp location which can only be in the high nibble
-  ENDM
-
-  ; Takes 12 cycles
-  MAC SUBTRACT_CURRENT_POSITION_LEFT_TURN
-    sed                                 ; 2   -  2 - Enable binary coded deciman
-    sec                                 ; 2   -  4 -
-    sbc Temp                            ; 3   -  7 - Subtract the tens from the current position
-    sta CurrentPosition                 ; 3   - 10
-    cld                                 ; 2   - 12 - Disable binary coded decimal
-  ENDM
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Define variables for use in RAM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   seg.u Variables
   org $80
 
+BankNumber              byte ; Allocate a byte which tells us which bank of memory the input is being read from currently
+NextBank                byte ; An indicator to say whether the bank needs to be advanced for more puzzle input 1 means NO, 0 means YES
 ScanlineNumber          byte ; Allocate 1 byte to store the current scanline number
 NumberHeight            byte ; Allocate 1 byte to store the height of the number
 NumberPointer           ds 2 ; Allocate enough space to store the address of a memory location
@@ -150,10 +63,14 @@ Temp                    byte ; Allocate some temporary working space
 ;; Start the ROM
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   seg code
-  org $F000
+  org $1000
+  rorg $F000
 
+  MAC PREAMBLE
 Start:
+  BANK_SWITCH_TO_0   ; All banks must contain this as the first instruction, no matter which bank is active at boot we will switch to bank 1
   CLEAN_START
+
   lda #$0E
   sta COLUP0  ; Set the colour of the player 1 bitmap to white
   lda #$00
@@ -164,17 +81,22 @@ Start:
   lda #%01010000 ; 50 in binary coded decimal
   sta CurrentPosition
 
-  lda #<PuzzleInput
+  lda #<PuzzleInputBank1
   sta CurrentInputPosPointer
-  lda #>PuzzleInput
+  lda #>PuzzleInputBank1
   sta CurrentInputPosPointer+1
 
-  lda #0
-  sta TotalTimesOnZero
-  sta TotalTimesOnZero+1
-  sta TotalTimesOnZero+2
-  sta TotalTimesOnZero+3
-  sta Complete
+  ; CLEAN_START ensures these are all 0
+  ; lda #0
+  ; sta TotalTimesOnZero
+  ; sta TotalTimesOnZero+1
+  ; sta TotalTimesOnZero+2
+  ; sta TotalTimesOnZero+3
+  ; sta Complete
+  ; sta BankNumber
+
+  lda #1
+  sta NextBank
 
 NextFrame:
   ;; Set register a to value 2
@@ -201,76 +123,19 @@ NextFrame:
   sta ScanlineNumber                ; 3   - 5
 
   lda Complete                      ; 3   - 8
-  cmp #1                            ; 2   - 10
-  bne ReadNextLine                  ; 2+1 - 12/13
+  beq NotComplete                   ; 2+1 - 12/13
   jmp LoopVBlank                    ; 3   - 15
+  ENDM ; PREAMBLE
+  PREAMBLE
 
-ReadNextLine:
-  ; Zero out the number of notches to move
-  lda #0                            ; 2   - 17
-  sta NotchesToMove                 ; 3   - 20
-  sta NotchesToMove+1               ; 3   - 23
-  sta NotchesToMove+2               ; 3   - 26
+NotComplete:
+  READ_LINE_INTO_RAM    ; 4 scanlines - 9/39 - 9/39
 
-  ; Read the next line of puzzle input
-  ldy #0                            ; 2   - 28
+  lda Complete
+  beq ContinueToCountNotches
+  jmp LoopVBlank
 
-  ; Read the direction (if it's a binary 0 then we have reached the end of the puzzlue input)
-  lda (CurrentInputPosPointer),Y    ; 4   - 32
-  cmp #0                            ; 2   - 34
-  bne Incomplete                    ; 2+1 - 36/37
-  lda #1                            ; 2   - 39
-  sta Complete                      ; 3   - 43
-  jmp LoopVBlank                    ; 3   - 46
-
-Incomplete:
-  sta Direction                     ; 3   - 49
-  NEXT_SCANLINE  ; 2 previous scanline, 5 next scanline
-
-; Loop takes between 25 and 51 PLUS the NEXT_SCANLINE extra 5 above, so 30 and 56
-FindEndOfNumber:
-  ; Read forward until we hit binary 0 to signify the end of the number
-  iny                               ; 2   - 2
-  lda (CurrentInputPosPointer),Y    ; 6   - 8 -Load the character at the new read position
-  cmp #0                            ; 2   - 10
-  bne FindEndOfNumber               ; 2+1 - 12/13
-
-  ; This is a VERY unsafe assumption that there can't be more than 3 digits in the input line
-  ; But there isn't in mine, so it will do
-  tya                               ; 2   -  2 - We need to know how many digits there were later so copy Y into A
-  pha                               ; 3   -  5 - and push it onto the stack
-  dey                               ; 2   -  7 - Y is currently pointing to the nil byte, move it to the last digit
-
-  ldx #2                            ; 2   -  9
-  ; Total cycles in worst case is 5 from NEXT SCANLINE + 56 from Loop + 9 from above + 2 from following NEXT_SCANLINE = 72
-
-  NEXT_SCANLINE  ; 2 previous scanline, 5 next scanline - Next loop max time needs entire scanline with no wiggle room
-; Loop takes between 33 (single digit) and 77 (3 digits)
-ReadNumber:
-  lda (CurrentInputPosPointer),Y    ; 6   - 6     - Load the character at the new read position
-  cmp #58                           ; 2   - 8     - Compare against the first ASCII binary value after the numbers. If we have reached it then the whole number has been read
-  bpl NumberReadComplete            ; 2+1 - 10/11 -
-  dey                               ; 2   - 12    - Move read (and storage) position back 1
-  sta NotchesToMove,X               ; 5   - 17
-  dex                               ; 2   - 19
-  jmp ReadNumber                    ; 3   - 22
-
-NumberReadComplete:
-  cpx #$FF ; If we iterated 3 times we need to SKIP a scanline
-  bne NumberReadCompleteWithTwoOrFewerDigits
-  dec ScanlineNumber
-  jmp NumberReadCompleteWithThreeDigits
-
-NumberReadCompleteWithTwoOrFewerDigits:
-  NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
-
-NumberReadCompleteWithThreeDigits:
-  pla                   ; 3   - 3
-  clc                   ; 2   - 5
-  adc #1                ; 2   - 7
-  sta IncrementBy       ; 3   - 10  - The stack had the number of digits + 1 (it was pointing to the null terminator) in it stored earlier (prior to ReadNumber)
-  INC_INPUT_POINTER     ; 24  - 34
-
+ContinueToCountNotches:
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
 
   ; Direction doesn't matter, add whole rotations
@@ -406,38 +271,6 @@ LoopOverscan:
   bne LoopOverscan
 
   jmp NextFrame
-
-  ; Takes between 16 and 54 cycles depending how many bytes overflow when added
-  MAC LANDED_ON_ZERO
-                                ; CYCLES - RUNNING TOTAL - Note
-    sed                         ; 2     -  2 - Set binary coded decimal addition
-    clc                         ; 2     -  3 - Clear the carry flag
-    lda TotalTimesOnZero+3      ; 3     -  5 - Load the least significant byte into A
-    adc IncrementBy             ; 3     -  8
-    sta TotalTimesOnZero+3      ; 3     - 11 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 14 - If there was no overflow (no carry flag) then we are done
-
-    clc                         ; 2     - 16 - Clear the carry flag
-    lda TotalTimesOnZero+2      ; 3     - 18 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 20
-    sta TotalTimesOnZero+2      ; 3     - 23 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 26 - If there was no overflow (no carry flag) we are done
-
-    clc                         ; 2     - 28 - Clear the carry flag
-    lda TotalTimesOnZero+1      ; 3     - 31 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 33 -
-    sta TotalTimesOnZero+1      ; 3     - 36 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 39 - If there was no overflow (no carry flag) we are done
-
-    clc                         ; 2     - 41 - Clear the carry flag
-    lda TotalTimesOnZero        ; 3     - 44 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 46 -
-    sta TotalTimesOnZero        ; 3     - 49 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 52 - If there was no overflow (no carry flag) we are done
-                                ; If there was an overflow.....oops, we exceeded our max of 8 digits
-.IncComplete:
-    cld                         ; 2      - 16 / 28 / 41 / 54 - Disable binary coded decimal addition
-  ENDM
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Print a single number to the screen over 7 lines
@@ -619,14 +452,440 @@ Number9:
   byte #%00000001 ;        #
   byte #%11111111 ; ########
 
-  org $F400
+  org $1400
+  rorg $F400
 
-PuzzleInput:
-  PUZZLE_INPUT
+PuzzleInputBank1;
+  PUZZLE_INPUT_BANK_1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Fill ROM to 4KB and set reset and interrupt vectors
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  org $FFFC
-  .word Start
-  .word Start
+  org $1FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Other memory banks - ONLY used for storing puzzle input. The initial 
+;; segment will load it line by line into RAM and is replicated in every bank
+;; to simplify the bank switching process and negate the need for a trampoline
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 2
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $2000
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $2400
+  rorg $F400
+
+PuzzleInputBank2;
+  PUZZLE_INPUT_BANK_2
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $2FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 3
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $3000         ; This is bank 3
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM
+
+  org $3400
+  rorg $F400
+
+PuzzleInputBank3;
+  PUZZLE_INPUT_BANK_3
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $3FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 4
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $4000
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $4400
+  rorg $F400
+
+PuzzleInputBank4;
+  PUZZLE_INPUT_BANK_4
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $4FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 5
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $5000
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $5400
+  rorg $F400
+
+PuzzleInputBank5;
+  PUZZLE_INPUT_BANK_5
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $5FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 6
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $6000
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $6400
+  rorg $F400
+
+PuzzleInputBank6;
+  PUZZLE_INPUT_BANK_6
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $6FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 7
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $7000         ; This is bank 2
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $7400
+  rorg $F400
+
+PuzzleInputBank7;
+  PUZZLE_INPUT_BANK_7
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $7FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; BANK 8
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  seg code
+  org $8000         ; This is bank 2
+  rorg $F000
+
+  PREAMBLE
+  READ_LINE_INTO_RAM ; This will switch back to bank 1
+
+  org $8400
+  rorg $F400
+
+PuzzleInputBank8;
+  PUZZLE_INPUT_BANK_8
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Fill ROM to 4KB and set NMI, reset and interrupt vectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  org $8FFA
+  rorg $FFFA
+  .word Start ; NMI
+  .word Start ; RESET
+  .word Start ; BREAK
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Some useful macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  ; Takes 7 cycles
+  MAC NEXT_SCANLINE
+.NextScanline
+                            ; Cycles - Total - Notes
+    sta WSYNC               ; 2      - 2
+    dec ScanlineNumber      ; 5      - 7
+  ENDM
+
+  ; Takes 7 cycles 
+  MAC BANK_SWITCH
+.BankSwitch
+    ldx BankNumber ; 3
+    ldy $FFF4,X    ; 4
+  ENDM
+
+  ; Takes 4 cycles
+  MAC BANK_SWITCH_TO_0
+.BankSwitchTo0
+    ldy $FFF4      ; 4
+  ENDM
+
+  MAC READ_LINE_INTO_RAM
+  BANK_SWITCH ; 7
+
+.ReadNextLine:
+  ; Zero out the number of notches to move
+  lda #0                            ; 2   - 2 
+  sta NotchesToMove                 ; 3   - 5
+  sta NotchesToMove+1               ; 3   - 8
+  sta NotchesToMove+2               ; 3   - 11
+
+  ; Read the next line of puzzle input
+  ldy #0                            ; 2   - 13
+
+  ; Read the direction (if it's a binary 0 then we have reached the end of the puzzlue input)
+  lda (CurrentInputPosPointer),Y    ; 5   - 18 - y is always 0 here so we cannot cross a page boundary
+  cmp #90                           ; 2   - 20     - An ascii Z
+  bne .Incomplete                   ; 2+1 - 22 (Complete) /23 (Incomplete)
+  lda #1                            ; 2   - 24
+  sta Complete                      ; 3   - 27
+  jmp .InputReadTotallyComplete     ; 3   - 30
+
+; Reach here at 23
+.Incomplete:
+  sta Direction                     ; 3   - 26
+
+  NEXT_SCANLINE ; 1 SCANLINES USED
+.FindEndOfNumber:
+  ; Read forward until we hit an ascii char which is above the number range
+                                    ; NOTE All cycle times recorded without a page boundary cross. Need to add 1-4 for potential page boundary crosses
+                                    ; C   - C in loop 1st::1d::2d::3d - C in total incl pre-loop - Notes
+  iny                               ; 2   -  2 :: 16 :: 30 :: 43 -  :: ::
+  lda (CurrentInputPosPointer),Y    ; 5/6 -  7 :: 21 :: 35 :: 48 -  :: :: (If the earlier LDA was across a boundary this one cannot be) - Load the character at the new read position
+  cmp #58                           ; 2   -  9 :: 23 :: 37 :: 50 -       :: :: - If the char is higher in the ascii table than the numbers (one of L R or N in our case)
+  bpl .EndOfNumberFound             ; 2+1 - 11 :: 25 :: 38 :: 52 -       :: :: - then number end found - First time through this CANNOT be the end
+  jmp .FindEndOfNumber              ; 3   - 14 :: 28 :: 41 :: __ -       :: :: - 
+
+; Can reach here at one of (add between 1 and 4 if any page boundary was crossed) PLES 5 from next_scanline
+; If 1 digits 26/27-28 (without page boundary cross/with page boundary cross(es)) 
+; If 2 digits 38/39-41 (without page boundary cross/with page boundary cross(es))
+; If 3 digits 53/54-57 (without page boundary cross/with page boundary cross(es))
+
+; 62 is the Worst case with max page boundarys and 5 from NEXT_SCANLINE
+.EndOfNumberFound
+  NEXT_SCANLINE              ; 5 -  5 - 2 SCANLINES USED
+  cmp #78                    ; 2 -  7 - If the char is a carriage return, then next bank advance needs to happen later
+  bne .ContinueReadingNumber ; 2 -  9
+  lda #0                     ; 2 - 11
+  sta NextBank               ; 3 - 14 - Set the indicator that the next bank needs to be advanced to
+
+; Here in 10 if no next bank indication
+; Here in 14 if next bank indicated
+.ContinueReadingNumber
+  ; This is a VERY unsafe assumption that there can't be more than 3 digits in the input line
+  ; But there isn't in mine, so it will do
+  ;                                 ; C - Total if no next bank/Total if next bank - Notes
+  sty IncrementBy                   ; 3 - 13/17 - Will be used later to increment the CurrentInputPosPointer to the start of the next input 
+  dey                               ; 2 - 15/19 - Y is currently pointing to the char after the number, move it to the last digit
+
+  ldx #2                            ; 2 - 17/21  
+
+
+  NEXT_SCANLINE                     ; 3 SCALINES USED
+  ; Total cycles in worst case is 56 from the loop below
+  ; Cycles for this loop (totals include the 14 from above):
+  ;    1 Digits Read - 33 - 47
+  ;    2 Digits Read - 55 - 69
+  ;    3 Digits Read - 77 - 91
+.ReadNumber:
+                                    ; C   - C in loop 1d::2d::3d - C in total incl pre-loop - Notes
+                                    ; Note all recorded without page boundary cross, need to add between 1 and 3 if there was a page boundary cross
+  lda (CurrentInputPosPointer),Y    ; 5/6 -  5 :: 24 :: 43 - Load the character at the new read position
+  sta NotchesToMove,X               ; 5   - 10 :: 29 :: 48 -
+  dey                               ; 2   - 12 :: 31 :: 50 - Move read position back 1 (beq sets Z flag)
+  beq .NumberReadComplete            ; 2+1 - 14 :: 33 :: 53 - If read position is now 0, read is complete
+  dex                               ; 2   - 16 :: 35 :: __ - Decrease the storage position
+  jmp .ReadNumber                   ; 3   - 19 :: 38 :: __
+
+; Can reach here at one of (add between 1 and 3 if any page boundary was crossed) PLUS 5 from next scanline above
+; If 1 digits 14/15 (without page boundary cross/with page boundary cross(es)) 
+; If 2 digits 33/34-35 (without page boundary cross/with page boundary cross(es))
+; If 3 digits 53/54-56 (without page boundary cross/with page boundary cross(es))
+; Worst case 63 cycles: 56 if 3 digits and 3 page broundary crosses + 5 from previous NEXT_SCANLINE + 2 from following NEXT_SCANLINE = 63
+.NumberReadComplete:
+  NEXT_SCANLINE                 ; 5   - 5  - 4 SCANLINES USED
+
+  lda NextBank                  ; 3   - 8  - Load next bank indicator
+  bne .IncrementPointer         ; 2+1 - 10 - If it's not zero then skip to increment the pointer
+
+  inc NextBank                  ; 5   - 15 - Set NextBank indicator back to 1 to indicate we don't need to increment
+  inc BankNumber                ; 5   - 20
+  lda #<PuzzleInputBank1        ; 3   - 23
+  sta CurrentInputPosPointer    ; 3   - 26
+  lda #>PuzzleInputBank1        ; 3   - 29
+  sta CurrentInputPosPointer+1  ; 3   - 32
+  jmp .MacroOver                ; 3   - 35
+
+; Reach here in 11 cycles
+.IncrementPointer
+  clc                             ; 2      - 11
+  lda CurrentInputPosPointer      ; 3      - 14
+  adc IncrementBy                 ; 3      - 17
+  sta CurrentInputPosPointer      ; 3      - 20
+  bcc .MacroOver                  ; 2+1    - 22/23
+
+  clc                             ; 2      - 24 
+  lda CurrentInputPosPointer+1    ; 3      - 27
+  adc #1                          ; 2      - 29
+  sta CurrentInputPosPointer+1    ; 3      - 32
+  jmp .MacroOver                  ; 3      - 35
+
+
+; Reached here at 0 SCANLINES and 30 cycles:
+.InputReadTotallyComplete ; If the input is exhausted we reach here With either 30 or 31 scanlines used
+  REPEAT 4
+    NEXT_SCANLINE
+  REPEND
+
+; Reached here in 4 Scanlines AND
+;   23 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
+;   35 cycles if input has not been totally exhausted, and incrementing the pointer does require a carry
+;    5 cycles if input has not been totally exhausted
+.MacroOver
+  BANK_SWITCH_TO_0 ; 4
+  ENDM
+
+; Takes from 10 to 66 cycles
+  MAC ADD_WHOLE_ROTATIONS
+
+    lda NotchesToMove           ; 3        - 3
+    sec                         ; 2        - 5
+    sbc #48                     ; 2        - 7        - Subtract 48 from the ascii value to get the corrent binary number
+    bmi .WholeRotationsFinished ; 2 + 1    - 9/10     - If it's negative then it was binary 0 meaning no digit
+    sta IncrementBy             ; 3        - 12       - Set up LANDED_ON_ZERO to add the number of hundreds
+
+    LANDED_ON_ZERO              ; 16 to 54 - 28 to 66
+.WholeRotationsFinished:
+  ENDM
+
+  ; Leaves the total number of notches in BCD in A, as loaded from the tens and units columns
+  ; Takes either 23 cycles if there are no tens, or 31 if there are
+  MAC CALCULATE_NUMBER_OF_TENS_AND_UNITS
+    ; Load the numbers of 10s
+    lda NotchesToMove+1           ; 3         - 3    - Load the number of 10s (in ascii) into the accumulator
+    sec                           ; 2         - 5
+    sbc #48                       ; 2         - 7    - Subtract 48 from the ascii value to get the corrent binary number
+    bpl .SomeTens                 ; 2 + 1     - 9/10 - If it's negative then it was binary 0 meaning no digit
+    lda #0                        ; 2         - 11
+    jmp .LoadUnits                ; 3         - 14
+
+.SomeTens
+    ; Convert to BCD by shifting our single digit 4 left to put it in the left most nibble
+    asl                           ; 2         - 12
+    asl                           ; 2         - 14
+    asl                           ; 2         - 16
+    asl                           ; 2         - 18
+
+.LoadUnits                                    ; Cycles if no tens/Cycles if tens
+    sta Temp                      ; 3         - 13/21 - Save the tens
+    ; Now load the units
+    lda NotchesToMove+2           ; 3         - 16/24
+    sec                           ; 2         - 18/26
+    sbc #48                       ; 2         - 20/28
+    ; The units of the number cannot be missing (i.e. binary 0) so just use it at face value
+    ora Temp                      ; 3        -  23/31 - OR the units in the accumulator (which can only be in the low nibble)
+                                  ;          -        - with the tens in the Temp location which can only be in the high nibble
+  ENDM
+
+  ; Takes 12 cycles
+  MAC SUBTRACT_CURRENT_POSITION_LEFT_TURN
+    sed                                 ; 2   -  2 - Enable binary coded deciman
+    sec                                 ; 2   -  4 -
+    sbc Temp                            ; 3   -  7 - Subtract the tens from the current position
+    sta CurrentPosition                 ; 3   - 10
+    cld                                 ; 2   - 12 - Disable binary coded decimal
+  ENDM
+
+  ; Takes 14 cycles
+  MAC SET_NUMBER_POINTER_TO_X ; Set X register to the number to display 0-9
+                            ; Cycles - Total - Notes
+    lda NumbersHighByte,X   ; 4      - 4
+    sta NumberPointer       ; 3      - 7
+    lda NumbersLowByte,X    ; 4      - 11
+    sta NumberPointer+1     ; 3      - 14
+  ENDM
+
+  ; Takes between 16 and 54 cycles depending how many bytes overflow when added
+  MAC LANDED_ON_ZERO
+                                ; CYCLES - RUNNING TOTAL - Note
+    sed                         ; 2     -  2 - Set binary coded decimal addition
+    clc                         ; 2     -  3 - Clear the carry flag
+    lda TotalTimesOnZero+3      ; 3     -  5 - Load the least significant byte into A
+    adc IncrementBy             ; 3     -  8
+    sta TotalTimesOnZero+3      ; 3     - 11 - Store the result
+    bcc .IncComplete            ; 2 + 1 - 14 - If there was no overflow (no carry flag) then we are done
+
+    clc                         ; 2     - 16 - Clear the carry flag
+    lda TotalTimesOnZero+2      ; 3     - 18 - Given there was overflow, carry the addition to the next least significant byte
+    adc #1                      ; 2     - 20
+    sta TotalTimesOnZero+2      ; 3     - 23 - Store the result
+    bcc .IncComplete            ; 2 + 1 - 26 - If there was no overflow (no carry flag) we are done
+
+    clc                         ; 2     - 28 - Clear the carry flag
+    lda TotalTimesOnZero+1      ; 3     - 31 - Given there was overflow, carry the addition to the next least significant byte
+    adc #1                      ; 2     - 33 -
+    sta TotalTimesOnZero+1      ; 3     - 36 - Store the result
+    bcc .IncComplete            ; 2 + 1 - 39 - If there was no overflow (no carry flag) we are done
+
+    clc                         ; 2     - 41 - Clear the carry flag
+    lda TotalTimesOnZero        ; 3     - 44 - Given there was overflow, carry the addition to the next least significant byte
+    adc #1                      ; 2     - 46 -
+    sta TotalTimesOnZero        ; 3     - 49 - Store the result
+    bcc .IncComplete            ; 2 + 1 - 52 - If there was no overflow (no carry flag) we are done
+                                ; If there was an overflow.....oops, we exceeded our max of 8 digits
+.IncComplete:
+    cld                         ; 2      - 16 / 28 / 41 / 54 - Disable binary coded decimal addition
+  ENDM
