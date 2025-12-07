@@ -21,10 +21,13 @@ debug-ntsc: build-debug
 	stella -format NTSC -debug output/cart.bin
 
 clean:
-	rm -f output/*.{bin,lst,sym}
+	rm -f output/*.{bin,lst,sym} includes/real_puzzle_input.h
 
 build-bank:
 	dasm bank-switching.asm -S -f3 -v0 -ooutput/bank.bin -loutput/bank.lst -soutput/bank.sym
 
 debug-bank: build-bank
 	stella -format PAL -debug output/bank.bin
+
+convert:
+	bash convert_puzzle_input.sh
