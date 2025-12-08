@@ -126,74 +126,9 @@ NextFrame:
 NotComplete:
   READ_LINE_INTO_RAM    ; 4 scanlines - 9/39 - 9/39
 
-  lda Complete
-  beq ContinueToCountNotches
-  jmp LoopVBlank
-
-ContinueToCountNotches:
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
 
-  ; Direction doesn't matter, add whole rotations
-  ADD_WHOLE_ROTATIONS   ; 10 to 66
-
-  NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
-
-  CALCULATE_NUMBER_OF_TENS_AND_UNITS  ; 23/31 - 28/36 (incl 5 from next scaline above) - Load the BCD tens and units from the current line
-  cmp #0                              ; 2     - 38 (worst case only) - If the number of notches is 0 then just finish, direction doesn't matter
-  bne CheckDirection                  ; 2+1   - 40/41
-  jmp LoopVBlank                      ; 3     - 43
-
-CheckDirection:
-  ; Left or right - cycles only counting worst case from CALCULATE_NUMBER_OF_TENS_AND_UNITS
-  ldx Direction                       ; 3   - 44
-  cpx #$4c                            ; 2   - 46    - L in ascii
-  beq LeftTurn                        ; 2+1 - 48/49
-  jmp RightTurn                       ; 3   - 51    - If it wasn't left, it must be right so just jump
-
-; Arrive here at 48 cycles
-; The accumulator contains the number of tens and units in BCD
-LeftTurn:
-  sta Temp                            ; 3     - 52
-  lda CurrentPosition                 ; 3     - 55
-  cmp #0                              ; 2     - 57     - If the current position is 0 it has already been accounted for
-  beq JustSubtractLeftTurn            ; 2+1   - 59/60  - so just do the subtraction, but don't increment the counter for having passed 0
-
-  ; Left turn means subtract                  ; No tens/some tens
-  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12    - 58
-  bcc LandedOnOrPassedZeroTurningLeft ; 2+1   - 60/61 - If the carry flag was unset by the subtraction then we rolled over and passed zero
-  cmp #0                              ; 2     - 62    - but did we land on 0
-  beq LandedOnOrPassedZeroTurningLeft ; 2+1   - 64/65 - If we didn't land on zero then skip
-  jmp LoopVBlank                      ; 3     - 67
-
-; When we get here it's either 60 or 64 cycles, will assume worst case of 64
-LandedOnOrPassedZeroTurningLeft:
-  lda #1                              ; 2   - 66
-  sta IncrementBy                     ; 3   - 69
-  NEXT_SCANLINE                       ; 2 previous scanline, 5 next scanline
-  LANDED_ON_ZERO                      ; 16 to 56 - 16-56
-  jmp LoopVBlank                      ; 3        - 59
-
-; Arrive here at 59 cycles
-JustSubtractLeftTurn:
-  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 71
-  jmp LoopVBlank                      ; 3   - 74
-
-; Arrive here at 50 cycles
-; The accumulator contains the number of tens and units in BCD
-RightTurn:
-  sta Temp              ; 3   - 53
-  lda CurrentPosition   ; 3   - 56
-  sed                   ; 2   - 58
-  clc                   ; 2   - 60
-  adc Temp              ; 3   - 63
-  sta CurrentPosition   ; 3   - 66
-  cld                   ; 2   - 68
-  bcc LoopVBlank        ; 2+1 - 70/71 ; No carry meaning we didn't go from 99 to 0, so no landing on 0
-
-  NEXT_SCANLINE         ; 2 from previous scanline, 5 from next scanline
-  lda #1                ; 2   - 7  (including 5 from NEXT_SCANLINE)
-  sta IncrementBy       ; 3   - 10
-  LANDED_ON_ZERO        ; 16 to 54 - 26 to 64
+  PROCESS_LINE
 
 ; Arrive here at: 74 cycles worst case from left turn
 LoopVBlank:
@@ -639,26 +574,111 @@ PuzzleInputBank8;
 ;; Some useful macros
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+  MAC PROCESS_LINE
+.ProcessLine
+    lda Complete                 ; 3   - 3
+    beq .ContinueToCountNotches  ; 2+1 - 5
+    jmp .EndLineProcessing       ; 3   - 8
+
+; Addive here at 6 cycles
+.ContinueToCountNotches:
+    NEXT_SCANLINE         ; 2 previous, 5 next - 1 SCANLINES - Such a waste, but it's the only sane way to cope with ADD_WHOLE_ROTATIONS wide variance
+
+    ADD_WHOLE_ROTATIONS   ; 10 to 66 - Direction doesn't matter, add whole rotations
+
+    NEXT_SCANLINE         ; 2 previous, 5 next - 2 SCANLINES
+
+    CALCULATE_NUMBER_OF_TENS_AND_UNITS    ; 23/31 - 28/36 (incl 5 from next scaline above) - Load the BCD tens and units from the current line
+    bne .CheckDirection                   ; 2+1   - 38/39 - If the number of notches isn't 0 then there's nothing left to do, just end processing
+    jmp .EndLineProcessing                ; 3     - 41
+
+.CheckDirection:
+    ; Left or right - cycles only counting worst case from CALCULATE_NUMBER_OF_TENS_AND_UNITS
+    ldx Direction                         ; 3   - 42
+    cpx #$4c                              ; 2   - 44    - L in ascii
+    beq .LeftTurn                         ; 2+1 - 46/47
+    jmp .RightTurn                        ; 3   - 49    - If it wasn't left, it must be right so just jump
+
+; Arrive here at 2 Scanlines & 47 cycles
+; The accumulator contains the number of tens and units in BCD
+.LeftTurn:
+    sta Temp                              ; 3     - 49
+    lda CurrentPosition                   ; 3     - 52 
+    beq .JustSubtractLeftTurn             ; 2+1   - 54/55  - If the current position was ALREADY 0 it's already been accounted for
+                                          ;                - so just do the subtraction, but don't increment the counter for having passed 0
+
+    SUBTRACT_CURRENT_POSITION_LEFT_TURN   ; 12    - 66 
+    bcc .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 68/69 - If the carry flag was unset by the subtraction then we rolled over and passed zero
+    beq .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 70/71 - If we didn't land on zero then skip
+    jmp .EndLineProcessing                ; 3     - 73
+
+; Arrive here at 2 Scanlines & 69 OR 71 Cycles
+.LandedOnOrPassedZeroTurningLeft:
+    NEXT_SCANLINE                       ; 2 previous, 5 next - 3 SCANLINES
+    lda #1                              ; 2   -  7
+    sta IncrementBy                     ; 3   - 10
+    LANDED_ON_ZERO                      ; 16 to 56 - 26-66
+    jmp .EndLineProcessing              ; 3        - 29-69
+
+; Arrive here at 2 Scalines & 55 cycles
+.JustSubtractLeftTurn:
+    SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 67
+    jmp .EndLineProcessing              ; 3   - 70 
+
+; Arrive here at 2 Scanlines & 49 cycles
+; The accumulator contains the number of tens and units in BCD
+.RightTurn:
+    sta Temp              ; 3   - 52
+    lda CurrentPosition   ; 3   - 55
+    sed                   ; 2   - 57
+    clc                   ; 2   - 59
+    adc Temp              ; 3   - 62
+    sta CurrentPosition   ; 3   - 65
+    cld                   ; 2   - 67
+    bcc .EndLineProcessing ; 2+1 - 69/70 ; No carry meaning we didn't go from 99 to 0, so no landing on 0
+
+    NEXT_SCANLINE         ; 2 previous, 5 next, 3 SCANLINES
+    lda #1                ; 2   - 7  (including 5 from NEXT_SCANLINE)
+    sta IncrementBy       ; 3   - 10
+    LANDED_ON_ZERO        ; 16 to 54 - 26 to 64
+
+; Arrive here at:
+;   0 Scanlines &     8 cycles if processing is already complete
+;   2 Scanlines &    41 cycles if there were only whole rotations (e.g. if the number of turns is evenly divisible by 100)
+;   2 Scanlines &    70 cycles if the current position was already 0 when the dial was turned left
+;   2 Scanlines &    73 cycles if there were tens and units of turns which DIDN'T land on or cross zero  
+;   3 Scanlines & 29-69 cycles if if a left turn landed on, or crossed zero
+;   3 Scanlines & 26-64 cycles if it was a right turn
+.EndLineProcessing
+  ENDM ; PROCESS_LINE
+
   ; Takes 7 cycles
   MAC NEXT_SCANLINE
 .NextScanline
                             ; Cycles - Total - Notes
     sta WSYNC               ; 2      - 2
     dec ScanlineNumber      ; 5      - 7
-  ENDM
+  ENDM ; NEXT_SCANLINE
+
+  ; Takes 5 cycles
+  MAC SKIP_SCANLINE
+.NextScanline
+                            ; Cycles - Total - Notes
+    dec ScanlineNumber      ; 5      - 5
+  ENDM ; SKIP_SCANLINE
 
   ; Takes 7 cycles 
   MAC BANK_SWITCH
 .BankSwitch
     ldx BankNumber ; 3
     ldy $FFF4,X    ; 4
-  ENDM
+  ENDM ; BANK_SWITCH
 
   ; Takes 4 cycles
   MAC BANK_SWITCH_TO_0
 .BankSwitchTo0
     ldy $FFF4      ; 4
-  ENDM
+  ENDM ; BANK_SWITCH_TO_0
 
   MAC READ_LINE_INTO_RAM
   BANK_SWITCH ; 7
@@ -773,9 +793,8 @@ PuzzleInputBank8;
 
 ; Reached here at 0 SCANLINES and 30 cycles:
 .InputReadTotallyComplete ; If the input is exhausted we reach here With either 30 or 31 scanlines used
-  REPEAT 4
-    NEXT_SCANLINE
-  REPEND
+  BANK_SWITCH_TO_0                ; 4      - 34 
+  jmp LoopVBlank                  ; 3      - 37 - Skip all further processing and jump skipping the remaining veritcal blank
 
 ; Reached here in 4 Scanlines AND
 ;   23 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
@@ -783,7 +802,7 @@ PuzzleInputBank8;
 ;    5 cycles if input has not been totally exhausted
 .MacroOver
   BANK_SWITCH_TO_0 ; 4
-  ENDM
+  ENDM ; READ_LINE_INTO_RAM
 
 ; Takes from 10 to 66 cycles
   MAC ADD_WHOLE_ROTATIONS
@@ -796,7 +815,7 @@ PuzzleInputBank8;
 
     LANDED_ON_ZERO              ; 16 to 54 - 28 to 66
 .WholeRotationsFinished:
-  ENDM
+  ENDM ; ADD_WHOLE_ROTATIONS
 
   ; Leaves the total number of notches in BCD in A, as loaded from the tens and units columns
   ; Takes either 23 cycles if there are no tens, or 31 if there are
@@ -825,7 +844,7 @@ PuzzleInputBank8;
     ; The units of the number cannot be missing (i.e. binary 0) so just use it at face value
     ora Temp                      ; 3        -  23/31 - OR the units in the accumulator (which can only be in the low nibble)
                                   ;          -        - with the tens in the Temp location which can only be in the high nibble
-  ENDM
+  ENDM ; CALCULATE_NUMBER_OF_TENS_AND_UNITS
 
   ; Takes 12 cycles
   MAC SUBTRACT_CURRENT_POSITION_LEFT_TURN
@@ -834,7 +853,7 @@ PuzzleInputBank8;
     sbc Temp                            ; 3   -  7 - Subtract the tens from the current position
     sta CurrentPosition                 ; 3   - 10
     cld                                 ; 2   - 12 - Disable binary coded decimal
-  ENDM
+  ENDM ; SUBTRACT_CURRENT_POSITION_LEFT_TURN
 
   ; Takes 14 cycles
   MAC SET_NUMBER_POINTER_TO_X ; Set X register to the number to display 0-9
@@ -843,7 +862,7 @@ PuzzleInputBank8;
     sta NumberPointer       ; 3      - 7
     lda NumbersLowByte,X    ; 4      - 11
     sta NumberPointer+1     ; 3      - 14
-  ENDM
+  ENDM ; SET_NUMBER_POINTER_TO_X
 
   ; Takes between 16 and 54 cycles depending how many bytes overflow when added
   MAC LANDED_ON_ZERO
@@ -875,4 +894,4 @@ PuzzleInputBank8;
                                 ; If there was an overflow.....oops, we exceeded our max of 8 digits
 .IncComplete:
     cld                         ; 2      - 16 / 28 / 41 / 54 - Disable binary coded decimal addition
-  ENDM
+  ENDM ; LANDED_ON_ZERO
