@@ -130,7 +130,6 @@ NotComplete:
 
   PROCESS_LINE
 
-; Arrive here at: 74 cycles worst case from left turn
 LoopVBlank:
   ; Loop away the remaining scanlines until the visible portion of the display
   NEXT_SCANLINE  ; 2 previous scanline, 5 next scanline
@@ -610,7 +609,8 @@ PuzzleInputBank8;
     SUBTRACT_CURRENT_POSITION_LEFT_TURN   ; 12    - 66 
     bcc .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 68/69 - If the carry flag was unset by the subtraction then we rolled over and passed zero
     beq .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 70/71 - If we didn't land on zero then skip
-    jmp .EndLineProcessing                ; 3     - 73
+    NEXT_SCANLINE                         ; 2 previous, 5 next - 3 Scanlines
+    jmp .EndLineProcessing                ; 3     - 7
 
 ; Arrive here at 2 Scanlines & 69 OR 71 Cycles
 .LandedOnOrPassedZeroTurningLeft:
@@ -646,7 +646,7 @@ PuzzleInputBank8;
 ;   0 Scanlines &     8 cycles if processing is already complete
 ;   2 Scanlines &    41 cycles if there were only whole rotations (e.g. if the number of turns is evenly divisible by 100)
 ;   2 Scanlines &    70 cycles if the current position was already 0 when the dial was turned left
-;   2 Scanlines &    73 cycles if there were tens and units of turns which DIDN'T land on or cross zero  
+;   3 Scanlines &     7 cycles if there were tens and units of turns which DIDN'T land on or cross zero  
 ;   3 Scanlines & 29-69 cycles if if a left turn landed on, or crossed zero
 ;   3 Scanlines & 26-64 cycles if it was a right turn
 .EndLineProcessing
@@ -778,17 +778,17 @@ PuzzleInputBank8;
 
 ; Reach here in 11 cycles
 .IncrementPointer
-  clc                             ; 2      - 11
-  lda CurrentInputPosPointer      ; 3      - 14
-  adc IncrementBy                 ; 3      - 17
-  sta CurrentInputPosPointer      ; 3      - 20
-  bcc .MacroOver                  ; 2+1    - 22/23
+  clc                             ; 2      - 13
+  lda CurrentInputPosPointer      ; 3      - 16
+  adc IncrementBy                 ; 3      - 19
+  sta CurrentInputPosPointer      ; 3      - 22
+  bcc .MacroOver                  ; 2+1    - 24/25
 
-  clc                             ; 2      - 24 
-  lda CurrentInputPosPointer+1    ; 3      - 27
-  adc #1                          ; 2      - 29
-  sta CurrentInputPosPointer+1    ; 3      - 32
-  jmp .MacroOver                  ; 3      - 35
+  clc                             ; 2      - 26 
+  lda CurrentInputPosPointer+1    ; 3      - 29
+  adc #1                          ; 2      - 31
+  sta CurrentInputPosPointer+1    ; 3      - 34
+  jmp .MacroOver                  ; 3      - 37
 
 
 ; Reached here at 0 SCANLINES and 30 cycles:
@@ -797,8 +797,8 @@ PuzzleInputBank8;
   jmp LoopVBlank                  ; 3      - 37 - Skip all further processing and jump skipping the remaining veritcal blank
 
 ; Reached here in 4 Scanlines AND
-;   23 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
-;   35 cycles if input has not been totally exhausted, and incrementing the pointer does require a carry
+;   25 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
+;   37 cycles if input has not been totally exhausted, and incrementing the pointer does require a carry
 ;    5 cycles if input has not been totally exhausted
 .MacroOver
   BANK_SWITCH_TO_0 ; 4
@@ -866,6 +866,7 @@ PuzzleInputBank8;
 
   ; Takes between 16 and 54 cycles depending how many bytes overflow when added
   MAC LANDED_ON_ZERO
+.LandedOnZero
                                 ; CYCLES - RUNNING TOTAL - Note
     sed                         ; 2     -  2 - Set binary coded decimal addition
     clc                         ; 2     -  3 - Clear the carry flag
