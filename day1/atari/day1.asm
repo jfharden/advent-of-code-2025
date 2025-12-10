@@ -45,12 +45,16 @@
   seg.u Variables
   org $80
 TotalTimesOnZero        ds 3 ; Allocate space to store total times on zero
+DigitBitmapPointer1     word ; Store point to the bitmap graphic of the value of digit 1 of the times on zero
+DigitBitmapPointer2     word ; Store point to the bitmap graphic of the value of digit 2 of the times on zero
+DigitBitmapPointer3     word ; Store point to the bitmap graphic of the value of digit 3 of the times on zero
+DigitBitmapPointer4     word ; Store point to the bitmap graphic of the value of digit 4 of the times on zero
+DigitBitmapPointer5     word ; Store point to the bitmap graphic of the value of digit 5 of the times on zero
+DigitBitmapPointer6     word ; Store point to the bitmap graphic of the value of digit 6 of the times on zero
 
 BankNumber              byte ; Allocate a byte which tells us which bank of memory the input is being read from currently
 NextBank                byte ; An indicator to say whether the bank needs to be advanced for more puzzle input 1 means NO, 0 means YES
 ScanlineNumber          byte ; Allocate 1 byte to store the current scanline number
-NumberHeight            byte ; Allocate 1 byte to store the height of the number
-NumberPointer           ds 2 ; Allocate enough space to store the address of a memory location
 CurrentInputPosPointer  ds 2 ; Allocate enough space to store a pointer to the current position in the puzzle input
 Direction               byte ; Allocate 1 byte to store the direction (L or R)
 NotchesToMove           ds 3 ; Allocate enough bytes to store 3 digits for rotation
@@ -79,8 +83,7 @@ Start:
   sta COLUP0  ; Set the colour of the player 1 bitmap to white
   lda #$00
   sta COLUBK  ; Set the background colour to black
-  lda #11
-  sta NumberHeight
+  lda #8
   ; lda #50
   lda #%01010000 ; 50 in binary coded decimal
   sta CurrentPosition
@@ -93,6 +96,16 @@ Start:
   lda #1
   sta NextBank
 
+  ; The high byte of the digit bitmap pointers will never change, it's always the same location in
+  ; the ROM, so lets set them all now and we never need to use cycles on it when running
+  lda #>Number0                 ; 3 -  3 - Load the high byte of the memory address of the Number graphics
+  sta DigitBitmapPointer1+1     ; 4 -  7 - Store it in the high byte of every digit bitmap pointer
+  sta DigitBitmapPointer2+1     ; 4 - 11 - Store it in the high byte of every digit bitmap pointer
+  sta DigitBitmapPointer3+1     ; 4 - 15 - Store it in the high byte of every digit bitmap pointer
+  sta DigitBitmapPointer4+1     ; 4 - 19 - Store it in the high byte of every digit bitmap pointer
+  sta DigitBitmapPointer5+1     ; 4 - 23 - Store it in the high byte of every digit bitmap pointer
+  sta DigitBitmapPointer6+1     ; 4 - 27 - Store it in the high byte of every digit bitmap pointer
+
 NextFrame:
   ;; Set register a to value 2
   lda #2
@@ -104,9 +117,9 @@ NextFrame:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Generate the 3 lines of empty VSYNC
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  REPEAT 3
-    sta WSYNC
-  REPEND
+  jsr SetGraphicsPointers ; 6 + 88
+  sta WSYNC
+  sta WSYNC
 
   lda #0
   sta VSYNC   ; We have now rendered the VSYNC
@@ -144,44 +157,80 @@ LoopVBlank:
   lda #242
   sta ScanlineNumber
 
-LoopVisible:
-  lda #0
-
-PrintNextTwoNumbers:
-  pha                  ; Push the accumulator, which represents the byte offset for the number of times on zero
-  tay                  ; Transfer the accumulator to Y so we can use it as a byte offset to LDA
-  lda TotalTimesOnZero,Y
-  pha                  ; push the accumulator onto the stack, we will need it again soon
-  lsr                  ; Shift left 4 times to make the high nibble the low nibble
-  lsr
-  lsr
-  lsr
-  tax                  ; Put the accumulator into X ready for setting the number pointer
-
-  SET_NUMBER_POINTER_TO_X
-  jsr PrintNumber
+VisibleDisplay:
+  ldy #0
+Digit1PrintLoop:
+  lda (DigitBitmapPointer1),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit1PrintLoop
 
   REPEAT 5
     NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
   REPEND
 
-  pla                 ; Pop the stack into the accumulator
-  and #$0f            ; Mask so we only have the low nibble
-  tax                 ; Put the accumulator into X ready for setting the number pointer
-  SET_NUMBER_POINTER_TO_X
-  jsr PrintNumber
+  ldy #0
+Digit2PrintLoop:
+  lda (DigitBitmapPointer2),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit2PrintLoop
 
   REPEAT 5
-    NEXT_SCANLINE     ; 2 previous scanline, 5 next scanline
+    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
   REPEND
 
-  pla                 ; Pop the stack into the accumulator, this is the previously pushed byte offset for our total times on zero number
-  clc
-  adc #1              ; Increment the accumulator so we move onto the next byte in the total times on zero number
-  cmp #3
-  bne PrintNextTwoNumbers
+  ldy #0
+Digit3PrintLoop:
+  lda (DigitBitmapPointer3),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit3PrintLoop
 
+  REPEAT 5
+    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
+  REPEND
 
+  ldy #0
+Digit4PrintLoop:
+  lda (DigitBitmapPointer4),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit4PrintLoop
+
+  REPEAT 5
+    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
+  REPEND
+
+  ldy #0
+Digit5PrintLoop:
+  lda (DigitBitmapPointer5),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit5PrintLoop
+
+  REPEAT 5
+    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
+  REPEND
+
+  ldy #0
+Digit6PrintLoop:
+  lda (DigitBitmapPointer6),Y
+  sta GRP0
+  NEXT_SCANLINE
+  iny
+  cpy #8
+  bne Digit6PrintLoop
 
 ScanToEndOfVisible:
   NEXT_SCANLINE           ; 2 previous scanline, 5 next scanline
@@ -201,67 +250,75 @@ LoopOverscan:
 
   jmp NextFrame
 
+; Takes 88 cycles including RTS
+SetGraphicsPointers:
+  ; Digit 1
+  lda TotalTimesOnZero          ; 3 -  3
+  and #$F0                      ; 2 -  5 - Isolate the upper nibble
+  ; To move the upper nibble to the bottom nibble is 4 right shifts,
+  ; then to multiple the BCD digit by 8 (which gets us the offset from the
+  ; Number0 label that our number actually starts) is left shift 3 times,
+  ; So overall we can just right shift once
+  lsr                           ; 2 -  7
+  sta DigitBitmapPointer1       ; 3 - 10 - Store Pointer to the low byte
+
+  ; Digit 2
+  lda TotalTimesOnZero          ; 3 - 13
+  and #$0F                      ; 2 - 15 - Isolate the low nibble
+  asl                           ; 2 - 17 - Multiple the BCD digit by 8 to get the offset
+  asl                           ; 2 - 19 - from the Number0 label that our number actually
+  asl                           ; 2 - 21 - starts
+  sta DigitBitmapPointer2       ; 3 - 34
+
+  ; Digit 3
+  lda TotalTimesOnZero+1        ; 3 - 37
+  and #$F0                      ; 2 - 39 - Isolate the upper nibble
+  lsr                           ; 2 - 41
+  sta DigitBitmapPointer3       ; 3 - 44 - Store Pointer to the low byte
+
+  ; Digit 4
+  lda TotalTimesOnZero+1        ; 3 - 47
+  and #$0F                      ; 2 - 49 - Isolate the low nibble
+  asl                           ; 2 - 51 - Multiple the BCD digit by 8 to get the offset
+  asl                           ; 2 - 53 - from the Number0 label that our number actually
+  asl                           ; 2 - 55 - starts
+  sta DigitBitmapPointer4       ; 3 - 58
+
+  ; Digit 5
+  lda TotalTimesOnZero+2        ; 3 - 61
+  and #$F0                      ; 2 - 63 - Isolate the upper nibble
+  ; To move the upper nibble to the bottom nibble is 4 right shifts,
+  ; then to multiple the BCD digit by 8 (which gets us the offset from the
+  ; Number0 label that our number actually starts) is left shift 3 times,
+  ; So overall we can just right shift once
+  lsr                           ; 2 - 65
+  sta DigitBitmapPointer5       ; 3 - 68 - Store Pointer to the low byte
+
+  ; Digit 6
+  lda TotalTimesOnZero+2        ; 3 - 71
+  and #$0F                      ; 2 - 73 - Isolate the low nibble
+  asl                           ; 2 - 75 - Multiple the BCD digit by 8 to get the offset
+  asl                           ; 2 - 77 - from the Number0 label that our number actually
+  asl                           ; 2 - 79 - starts
+  sta DigitBitmapPointer6       ; 3 - 82
+
+  rts
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Print a single number to the screen over 7 lines
-;; Registers:
-;;   y: Memory location of the number to render
+;; Number graphics
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-PrintNumber:
-  NEXT_SCANLINE
-  ldy #0
-
-LoopNumber:
-  lda (NumberPointer),Y    ; Load the byte of the bitmap into the accumulator
-  sta GRP0                 ; Store the accumulator in the graphics register for player 0
-
-  NEXT_SCANLINE
-
-  iny                      ; Increment the y register which is counting if we are at the end of the bitmap
-
-  cpy NumberHeight         ; Compare y to see if it has reached the bitmap height
-  bne LoopNumber           ; Go to the next line
-
-  lda #0
-  sta GRP0                 ; Change to drawing a blank line
-
-  rts                      ; return to the caller
-
-NumbersHighByte:
-  byte #<Number0
-  byte #<Number1
-  byte #<Number2
-  byte #<Number3
-  byte #<Number4
-  byte #<Number5
-  byte #<Number6
-  byte #<Number7
-  byte #<Number8
-  byte #<Number9
-
-NumbersLowByte:
-  byte #>Number0
-  byte #>Number1
-  byte #>Number2
-  byte #>Number3
-  byte #>Number4
-  byte #>Number5
-  byte #>Number6
-  byte #>Number7
-  byte #>Number8
-  byte #>Number9
-
+  align $100  ; Timing is so crucial for referencing these graphics we cannot afford to cross a page boundary
+              ; so assure they are aligned into a single page of memory
+; All of the numbers REQUIRE a blank column at the start to allow for correct spacing in a 6 digit horizontal number kernel
 Number0:
-  byte #%01111110 ;  ######
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%01111110 ;  ######
+  byte #%00111110 ;   #####
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%00111110 ;   #####
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number1:
   byte #%00000001 ;        #
@@ -271,115 +328,87 @@ Number1:
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number2:
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%11111111 ; ########
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number3:
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%11111111 ; ########
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number4:
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%11111111 ; ########
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number5:
-  byte #%11111111 ; ########
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number6:
-  byte #%11111111 ; ########
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%10000000 ; #
-  byte #%11111111 ; ########
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number7:
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number8:
-  byte #%11111111 ; ########
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%11111111 ; ########
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
 Number9:
-  byte #%11111111 ; ########
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%10000001 ; #      #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
   byte #%00000001 ;        #
   byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%11111111 ; ########
+  byte #%01111111 ;  #######
+  byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
 
   org $1400
   rorg $F400
@@ -396,7 +425,7 @@ PuzzleInputBank1;
   .word Start ; BREAK
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Other memory banks - ONLY used for storing puzzle input. The initial 
+;; Other memory banks - ONLY used for storing puzzle input. The initial
 ;; segment will load it line by line into RAM and is replicated in every bank
 ;; to simplify the bank switching process and negate the need for a trampoline
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -602,11 +631,11 @@ PuzzleInputBank8;
 ; The accumulator contains the number of tens and units in BCD
 .LeftTurn:
     sta Temp                              ; 3     - 49
-    lda CurrentPosition                   ; 3     - 52 
+    lda CurrentPosition                   ; 3     - 52
     beq .JustSubtractLeftTurn             ; 2+1   - 54/55  - If the current position was ALREADY 0 it's already been accounted for
                                           ;                - so just do the subtraction, but don't increment the counter for having passed 0
 
-    SUBTRACT_CURRENT_POSITION_LEFT_TURN   ; 12    - 66 
+    SUBTRACT_CURRENT_POSITION_LEFT_TURN   ; 12    - 66
     bcc .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 68/69 - If the carry flag was unset by the subtraction then we rolled over and passed zero
     beq .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 70/71 - If we didn't land on zero then skip
     NEXT_SCANLINE                         ; 2 previous, 5 next - 3 Scanlines
@@ -623,7 +652,7 @@ PuzzleInputBank8;
 ; Arrive here at 2 Scalines & 55 cycles
 .JustSubtractLeftTurn:
     SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 67
-    jmp .EndLineProcessing              ; 3   - 70 
+    jmp .EndLineProcessing              ; 3   - 70
 
 ; Arrive here at 2 Scanlines & 49 cycles
 ; The accumulator contains the number of tens and units in BCD
@@ -646,7 +675,7 @@ PuzzleInputBank8;
 ;   0 Scanlines &     8 cycles if processing is already complete
 ;   2 Scanlines &    41 cycles if there were only whole rotations (e.g. if the number of turns is evenly divisible by 100)
 ;   2 Scanlines &    70 cycles if the current position was already 0 when the dial was turned left
-;   3 Scanlines &     7 cycles if there were tens and units of turns which DIDN'T land on or cross zero  
+;   3 Scanlines &     7 cycles if there were tens and units of turns which DIDN'T land on or cross zero
 ;   3 Scanlines & 29-69 cycles if if a left turn landed on, or crossed zero
 ;   3 Scanlines & 26-64 cycles if it was a right turn
 .EndLineProcessing
@@ -667,7 +696,7 @@ PuzzleInputBank8;
     dec ScanlineNumber      ; 5      - 5
   ENDM ; SKIP_SCANLINE
 
-  ; Takes 7 cycles 
+  ; Takes 7 cycles
   MAC BANK_SWITCH
 .BankSwitch
     ldx BankNumber ; 3
@@ -685,7 +714,7 @@ PuzzleInputBank8;
 
 .ReadNextLine:
   ; Zero out the number of notches to move
-  lda #0                            ; 2   - 2 
+  lda #0                            ; 2   - 2
   sta NotchesToMove                 ; 3   - 5
   sta NotchesToMove+1               ; 3   - 8
   sta NotchesToMove+2               ; 3   - 11
@@ -710,14 +739,14 @@ PuzzleInputBank8;
   ; Read forward until we hit an ascii char which is above the number range
                                     ; NOTE All cycle times recorded without a page boundary cross. Need to add 1-4 for potential page boundary crosses
                                     ; C   - C in loop 1st::1d::2d::3d - C in total incl pre-loop - Notes
-  iny                               ; 2   -  2 :: 16 :: 30 :: 43 -  :: ::
-  lda (CurrentInputPosPointer),Y    ; 5/6 -  7 :: 21 :: 35 :: 48 -  :: :: (If the earlier LDA was across a boundary this one cannot be) - Load the character at the new read position
-  cmp #58                           ; 2   -  9 :: 23 :: 37 :: 50 -       :: :: - If the char is higher in the ascii table than the numbers (one of L R or N in our case)
-  bpl .EndOfNumberFound             ; 2+1 - 11 :: 25 :: 38 :: 52 -       :: :: - then number end found - First time through this CANNOT be the end
-  jmp .FindEndOfNumber              ; 3   - 14 :: 28 :: 41 :: __ -       :: :: - 
+  iny                               ; 2   -  2 :: 16 :: 30 :: 43 -
+  lda (CurrentInputPosPointer),Y    ; 5/6 -  7 :: 21 :: 35 :: 48 - (If the earlier LDA was across a boundary this one cannot be) - Load the character at the new read position
+  cmp #58                           ; 2   -  9 :: 23 :: 37 :: 50 - If the char is higher in the ascii table than the numbers (one of L R or N in our case)
+  bpl .EndOfNumberFound             ; 2+1 - 11 :: 25 :: 38 :: 52 - then number end found - First time through this CANNOT be the end
+  jmp .FindEndOfNumber              ; 3   - 14 :: 28 :: 41 :: __ -
 
 ; Can reach here at one of (add between 1 and 4 if any page boundary was crossed) PLES 5 from next_scanline
-; If 1 digits 26/27-28 (without page boundary cross/with page boundary cross(es)) 
+; If 1 digits 26/27-28 (without page boundary cross/with page boundary cross(es))
 ; If 2 digits 38/39-41 (without page boundary cross/with page boundary cross(es))
 ; If 3 digits 53/54-57 (without page boundary cross/with page boundary cross(es))
 
@@ -735,10 +764,10 @@ PuzzleInputBank8;
   ; This is a VERY unsafe assumption that there can't be more than 3 digits in the input line
   ; But there isn't in mine, so it will do
   ;                                 ; C - Total if no next bank/Total if next bank - Notes
-  sty IncrementBy                   ; 3 - 13/17 - Will be used later to increment the CurrentInputPosPointer to the start of the next input 
+  sty IncrementBy                   ; 3 - 13/17 - Will be used later to increment the CurrentInputPosPointer to the start of the next input
   dey                               ; 2 - 15/19 - Y is currently pointing to the char after the number, move it to the last digit
 
-  ldx #2                            ; 2 - 17/21  
+  ldx #2                            ; 2 - 17/21
 
 
   NEXT_SCANLINE                     ; 3 SCALINES USED
@@ -758,7 +787,7 @@ PuzzleInputBank8;
   jmp .ReadNumber                   ; 3   - 19 :: 38 :: __
 
 ; Can reach here at one of (add between 1 and 3 if any page boundary was crossed) PLUS 5 from next scanline above
-; If 1 digits 14/15 (without page boundary cross/with page boundary cross(es)) 
+; If 1 digits 14/15 (without page boundary cross/with page boundary cross(es))
 ; If 2 digits 33/34-35 (without page boundary cross/with page boundary cross(es))
 ; If 3 digits 53/54-56 (without page boundary cross/with page boundary cross(es))
 ; Worst case 63 cycles: 56 if 3 digits and 3 page broundary crosses + 5 from previous NEXT_SCANLINE + 2 from following NEXT_SCANLINE = 63
@@ -784,7 +813,7 @@ PuzzleInputBank8;
   sta CurrentInputPosPointer      ; 3      - 22
   bcc .MacroOver                  ; 2+1    - 24/25
 
-  clc                             ; 2      - 26 
+  clc                             ; 2      - 26
   lda CurrentInputPosPointer+1    ; 3      - 29
   adc #1                          ; 2      - 31
   sta CurrentInputPosPointer+1    ; 3      - 34
@@ -793,7 +822,7 @@ PuzzleInputBank8;
 
 ; Reached here at 0 SCANLINES and 30 cycles:
 .InputReadTotallyComplete ; If the input is exhausted we reach here With either 30 or 31 scanlines used
-  BANK_SWITCH_TO_0                ; 4      - 34 
+  BANK_SWITCH_TO_0                ; 4      - 34
   jmp LoopVBlank                  ; 3      - 37 - Skip all further processing and jump skipping the remaining veritcal blank
 
 ; Reached here in 4 Scanlines AND
@@ -855,15 +884,6 @@ PuzzleInputBank8;
     cld                                 ; 2   - 12 - Disable binary coded decimal
   ENDM ; SUBTRACT_CURRENT_POSITION_LEFT_TURN
 
-  ; Takes 14 cycles
-  MAC SET_NUMBER_POINTER_TO_X ; Set X register to the number to display 0-9
-                            ; Cycles - Total - Notes
-    lda NumbersHighByte,X   ; 4      - 4
-    sta NumberPointer       ; 3      - 7
-    lda NumbersLowByte,X    ; 4      - 11
-    sta NumberPointer+1     ; 3      - 14
-  ENDM ; SET_NUMBER_POINTER_TO_X
-
   ; Takes 18, 28, or 35 cycles depending how many times the addition needs to carry
   ; This could be a constant time of 31 cycles by omitting the bcc's, but we want to use
   ; as few cycles as possible, and I will move to using INTIM/TIMINT for timing instead of
@@ -890,3 +910,5 @@ PuzzleInputBank8;
 .IncrementComplete
     cld                         ; 2  - 18/28/35 - Disable binary coded decimal addition
   ENDM ; LANDED_ON_ZERO
+
+
