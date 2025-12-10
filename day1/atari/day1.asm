@@ -44,13 +44,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   seg.u Variables
   org $80
+TotalTimesOnZero        ds 3 ; Allocate space to store total times on zero
 
 BankNumber              byte ; Allocate a byte which tells us which bank of memory the input is being read from currently
 NextBank                byte ; An indicator to say whether the bank needs to be advanced for more puzzle input 1 means NO, 0 means YES
 ScanlineNumber          byte ; Allocate 1 byte to store the current scanline number
 NumberHeight            byte ; Allocate 1 byte to store the height of the number
 NumberPointer           ds 2 ; Allocate enough space to store the address of a memory location
-TotalTimesOnZero        ds 4 ; Allocate space to store total times on zero
 CurrentInputPosPointer  ds 2 ; Allocate enough space to store a pointer to the current position in the puzzle input
 Direction               byte ; Allocate 1 byte to store the direction (L or R)
 NotchesToMove           ds 3 ; Allocate enough bytes to store 3 digits for rotation
@@ -178,7 +178,7 @@ PrintNextTwoNumbers:
   pla                 ; Pop the stack into the accumulator, this is the previously pushed byte offset for our total times on zero number
   clc
   adc #1              ; Increment the accumulator so we move onto the next byte in the total times on zero number
-  cmp #4
+  cmp #3
   bne PrintNextTwoNumbers
 
 
@@ -864,35 +864,29 @@ PuzzleInputBank8;
     sta NumberPointer+1     ; 3      - 14
   ENDM ; SET_NUMBER_POINTER_TO_X
 
-  ; Takes between 16 and 54 cycles depending how many bytes overflow when added
+  ; Takes 18, 28, or 35 cycles depending how many times the addition needs to carry
+  ; This could be a constant time of 31 cycles by omitting the bcc's, but we want to use
+  ; as few cycles as possible, and I will move to using INTIM/TIMINT for timing instead of
+  ; aligning with individual scanlines, which means every cycle saved is worth it.
+  ; Given only 1 in every 10000 increments will overflow to the third digit, we save a lot
+  ; of cycles overall
   MAC LANDED_ON_ZERO
 .LandedOnZero
-                                ; CYCLES - RUNNING TOTAL - Note
-    sed                         ; 2     -  2 - Set binary coded decimal addition
-    clc                         ; 2     -  3 - Clear the carry flag
-    lda TotalTimesOnZero+3      ; 3     -  5 - Load the least significant byte into A
-    adc IncrementBy             ; 3     -  8
-    sta TotalTimesOnZero+3      ; 3     - 11 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 14 - If there was no overflow (no carry flag) then we are done
-
-    clc                         ; 2     - 16 - Clear the carry flag
-    lda TotalTimesOnZero+2      ; 3     - 18 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 20
-    sta TotalTimesOnZero+2      ; 3     - 23 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 26 - If there was no overflow (no carry flag) we are done
-
-    clc                         ; 2     - 28 - Clear the carry flag
-    lda TotalTimesOnZero+1      ; 3     - 31 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 33 -
-    sta TotalTimesOnZero+1      ; 3     - 36 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 39 - If there was no overflow (no carry flag) we are done
-
-    clc                         ; 2     - 41 - Clear the carry flag
-    lda TotalTimesOnZero        ; 3     - 44 - Given there was overflow, carry the addition to the next least significant byte
-    adc #1                      ; 2     - 46 -
-    sta TotalTimesOnZero        ; 3     - 49 - Store the result
-    bcc .IncComplete            ; 2 + 1 - 52 - If there was no overflow (no carry flag) we are done
-                                ; If there was an overflow.....oops, we exceeded our max of 8 digits
-.IncComplete:
-    cld                         ; 2      - 16 / 28 / 41 / 54 - Disable binary coded decimal addition
+                                ; C   - Running Total
+    sed                         ; 2   -  2    - Set binary coded decimal addition
+    clc                         ; 2   -  4    - Clear the carry flag
+    lda TotalTimesOnZero+2      ; 3   -  7    - Load the least significant byte into the accumulator
+    adc IncrementBy             ; 3   - 10    - Add the desired Increment
+    sta TotalTimesOnZero+2      ; 3   - 13    - Store the result
+    bcc .IncrementComplete      ; 2/3 - 15/16 - If there was no overflow just finish
+    lda TotalTimesOnZero+1      ; 3   - 18    - In case there was overflow load the next most significant byte
+    adc #0                      ; 2   - 20    - Add only the carry flag, should it have been set
+    sta TotalTimesOnZero+1      ; 3   - 23    - Store the result
+    bcc .IncrementComplete      ; 2/3 - 25/26
+    lda TotalTimesOnZero        ; 3   - 28    - In case there was overflow load the most significant byte
+    adc #0                      ; 2   - 30    - Add only the carry flag, should it have been set
+    sta TotalTimesOnZero        ; 3   - 33    - Store the result
+                                ; If there was an overflow.....oops, we exceeded our max of 6 digits
+.IncrementComplete
+    cld                         ; 2  - 18/28/35 - Disable binary coded decimal addition
   ENDM ; LANDED_ON_ZERO
