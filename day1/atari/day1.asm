@@ -282,17 +282,20 @@ NextFrame:
   sta ScanlineNumber                ; 3   - 5
 
   lda Complete                      ; 3   - 8
-  beq NotComplete                   ; 2+1 - 12/13
+  beq ProcessInput                  ; 2+1 - 12/13
   jmp LoopVBlank                    ; 3   - 15
   ENDM ; PREAMBLE
   PREAMBLE
 
-NotComplete:
+ProcessInput:
+  lda ScanlineNumber
+  cmp #10               ; If we have at least 10 scanlines left we can process more input
+  bmi LoopVBlank        ; Otherwise just exhaust the rest of the scanlines
+
   jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
-
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
-
-  jsr ProcessLine
+  jsr ProcessLine       ; 4 scanlines
+  jmp ProcessInput
 
 LoopVBlank:
   ; Loop away the remaining scanlines until the visible portion of the display
