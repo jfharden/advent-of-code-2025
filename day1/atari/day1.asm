@@ -44,13 +44,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   seg.u Variables
   org $80
-TotalTimesOnZero        ds 3 ; Allocate space to store total times on zero
-DigitBitmapPointer1     word ; Store point to the bitmap graphic of the value of digit 1 of the times on zero
-DigitBitmapPointer2     word ; Store point to the bitmap graphic of the value of digit 2 of the times on zero
-DigitBitmapPointer3     word ; Store point to the bitmap graphic of the value of digit 3 of the times on zero
-DigitBitmapPointer4     word ; Store point to the bitmap graphic of the value of digit 4 of the times on zero
-DigitBitmapPointer5     word ; Store point to the bitmap graphic of the value of digit 5 of the times on zero
-DigitBitmapPointer6     word ; Store point to the bitmap graphic of the value of digit 6 of the times on zero
+TotalTimesOnZero           ds 3 ; Allocate space to store total times on zero
+DigitBitmapPointer1        word ; Store pointer to the bitmap graphic of the value of digit 1 of the times on zero
+DigitBitmapPointer2        word ; Store pointer to the bitmap graphic of the value of digit 2 of the times on zero
+DigitBitmapPointer3        word ; Store pointer to the bitmap graphic of the value of digit 3 of the times on zero
+DigitBitmapPointer4        word ; Store pointer to the bitmap graphic of the value of digit 4 of the times on zero
+DigitBitmapPointer5        word ; Store pointer to the bitmap graphic of the value of digit 5 of the times on zero
+DigitBitmapPointer6        word ; Store pointer to the bitmap graphic of the value of digit 6 of the times on zero
+SixDigitDisplayLoopCount   byte ; Used for counting which line of the 6 digit display loop we are in
+Temp                       byte ; Allocate some temporary working space
 
 BankNumber              byte ; Allocate a byte which tells us which bank of memory the input is being read from currently
 NextBank                byte ; An indicator to say whether the bank needs to be advanced for more puzzle input 1 means NO, 0 means YES
@@ -61,7 +63,6 @@ NotchesToMove           ds 3 ; Allocate enough bytes to store 3 digits for rotat
 CurrentPosition         byte ; Allocate space for the current position of the dial
 Complete                byte ; Allocate space for a flag saying that processing the input is complete
 IncrementBy             byte ; Allocate space for a variable to store how much to incremnet something by (used by multiple macros)
-Temp                    byte ; Allocate some temporary working space
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Start the ROM
@@ -81,6 +82,7 @@ Start:
 
   lda #$0E
   sta COLUP0  ; Set the colour of the player 1 bitmap to white
+  sta COLUP1  ; Set the colour of the player 2 bitmap to white
   lda #$00
   sta COLUBK  ; Set the background colour to black
   lda #8
@@ -105,6 +107,23 @@ Start:
   sta DigitBitmapPointer4+1     ; 4 - 19 - Store it in the high byte of every digit bitmap pointer
   sta DigitBitmapPointer5+1     ; 4 - 23 - Store it in the high byte of every digit bitmap pointer
   sta DigitBitmapPointer6+1     ; 4 - 27 - Store it in the high byte of every digit bitmap pointer
+
+  ; The six digit display is the only thing we are ever displaying, so we can just set it's position once and never again
+  sta WSYNC     ; 3  - 3
+  SLEEP 32      ; 32 - 35
+
+  lda #3        ; 2  - 37
+  ldx #$f0      ; 2  - 39
+  stx RESP0     ; 3  - 42 - Position P0 at 42 cycles = 126 Colour clocks = 58 pixels (but 1 more from the stx HMP0 below, so actually 59 pixels)
+  stx RESP1     ; 3  - 45 - Position P1 at 45 cycles = 135 Colour Clocks = 67 pixels
+  stx HMP0      ; 3  - 48 - Store F0 in HMP0 which sets Player 0 to move right 1 colour clock 
+  sta NUSIZ0    ; 3  - 51 - Set Player 0 to repeat the graphic 3 times "close" (with 8 pixel gaps). Changing the value of GRP0 between the display of these 3 copies is the key to getting 6 digits displayed)
+  sta NUSIZ1    ; 3  - 54 - Set Player 1 to repeat the graphic 3 times "close" (with 8 pixel gaps). Changing the value of GRP1 between the display of these 3 copies is the key to getting 6 digits displayed)
+  lda #1           
+  sta VDELP0  ; This means when we write to GRP0 it is placed into a buffer, and only written when we write to GRP1, and vice versa
+  sta VDELP1  ; GRP1 will not be written after we set it until we write to GRP0. These were intended to shift a graphic down a scanline
+  sta WSYNC   ; Start a new Scanline
+  sta HMOVE   ; Move the player graphics to the positions specified above
 
 NextFrame:
   ;; Set register a to value 2
@@ -157,80 +176,61 @@ LoopVBlank:
   lda #242
   sta ScanlineNumber
 
-VisibleDisplay:
-  ldy #0
-Digit1PrintLoop:
+; This 6 digit score display is heavily inspired by a combination for the following books:
+; "Programming Games for Atari 2600" by Oscar Toledo G. First published in 2022. ISBN 978-1-387-80996-7
+; "Making Games for the Atari 2600" by Steven Hugg. Second Printing in 2018. ISBN 978-1-541-02130-3
+HorizontalScore:
+  sta WSYNC
+  lda #7
+  sta SixDigitDisplayLoopCount
+
+SixDigitDisplayLoop:
+  ; On the end of the scanline prior to the score, store the graphics for P0 and P1 (which will be the line of digit 1 and 2)
+  ldy SixDigitDisplayLoopCount                   
   lda (DigitBitmapPointer1),Y
-  sta GRP0
-  NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit1PrintLoop
-
-  REPEAT 5
-    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
-  REPEND
-
-  ldy #0
-Digit2PrintLoop:
+  sta GRP0                      ; Store line of digit 1 in the TIA graphics buffer read to write to GRP0 (since VDELP0 is enabled)
+  sta WSYNC                     ; Next scanline
   lda (DigitBitmapPointer2),Y
-  sta GRP0
-  NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit2PrintLoop
-
-  REPEAT 5
-    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
-  REPEND
-
-  ldy #0
-Digit3PrintLoop:
-  lda (DigitBitmapPointer3),Y
-  sta GRP0
-  NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit3PrintLoop
-
-  REPEAT 5
-    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
-  REPEND
-
-  ldy #0
-Digit4PrintLoop:
+  sta GRP1                      ; Store line of digit 2 in the TIA graphics buffer (and therefore also write the previous entry in the buffer to GRP0)
+  lda (DigitBitmapPointer3),Y   
+  sta GRP0                      ; Store line of digit 3 into the TIA graphics buffer (and therefore also write the previous entry in the buffer to GRP1)
   lda (DigitBitmapPointer4),Y
-  sta GRP0
-  NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit4PrintLoop
-
-  REPEAT 5
-    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
-  REPEND
-
-  ldy #0
-Digit5PrintLoop:
+  sta Temp                      ; Store line of digit 4 into the Temp memory address
   lda (DigitBitmapPointer5),Y
-  sta GRP0
-  NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit5PrintLoop
-
-  REPEAT 5
-    NEXT_SCANLINE      ; 2 previous scanline, 5 next scanline
-  REPEND
-
-  ldy #0
-Digit6PrintLoop:
+  tax                           ; Store line of digit 5 into the X register
   lda (DigitBitmapPointer6),Y
-  sta GRP0
+  tay                           ; Store line of digit 6 into the Y register
+  lda Temp
+  ; At this point:
+  ;   * GRP0 contains line of digit 1
+  ;   * GRP1 contains line of digit 2
+  ;   * GRP0 BUFFER contains line of digit 3
+  ;   * A contains line of digit 4
+  ;   * X contains line of digit 5
+  ;   * Y contains line of digit 6
+  ;   * Digit 1 (GRP0) should have displayed
+  ;   * Digit 2 (GRP1) should be displaying
+  sta GRP1 ; Digit 3 from buffer into GRP0, Line of digit 4 into GRP1 buffer
+  stx GRP0 ; Digit 4 from buffer into GRP1, Line of digit 5 into GRP0 buffer
+  sty GRP1 ; Digit 5 from buffer into GRP0, Line of digit 6 into GRP1 buffer
+  sta GRP0 ; Digit 6 from buffer into GRP1, Doesn't matter what we STA into GRP0 here, we just need to trigger the vertical delay buffer write
+  dec SixDigitDisplayLoopCount
+  bpl SixDigitDisplayLoop
+
   NEXT_SCANLINE
-  iny
-  cpy #8
-  bne Digit6PrintLoop
+
+  ; Reset all the graphics so they stop being drawn
+  lda #0
+  sta GRP0
+  sta GRP1
+  sta GRP0
+  sta GRP1
+
+  ; We have used up some scanlines above which are unaccounted for, so deduct them from the ScanlineNumber
+  lda ScanlineNumber
+  sec
+  sbc #9             ; 8 lines of graphics, 1 lines of WSYNC prior to graphics
+  sta ScanlineNumber
 
 ScanToEndOfVisible:
   NEXT_SCANLINE           ; 2 previous scanline, 5 next scanline
@@ -310,105 +310,106 @@ SetGraphicsPointers:
   align $100  ; Timing is so crucial for referencing these graphics we cannot afford to cross a page boundary
               ; so assure they are aligned into a single page of memory
 ; All of the numbers REQUIRE a blank column at the start to allow for correct spacing in a 6 digit horizontal number kernel
+; Also all the numbers are upside down, their final row is the first one loaded, and their first row is the last one loaded
 Number0:
-  byte #%00111110 ;   #####
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%00111110 ;   #####
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%00111110 ;   #####
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%00111110 ;   #####
 
 Number1:
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
+  byte #%00001000 ;     #
 
 Number2:
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%01111111 ;  #######
-  byte #%01000000 ;  #
-  byte #%01000000 ;  #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
 
 Number3:
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
 
 Number4:
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
 
 Number5:
-  byte #%01111111 ;  #######
-  byte #%01000000 ;  #
-  byte #%01000000 ;  #
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
 
 Number6:
-  byte #%01111111 ;  #######
-  byte #%01000000 ;  #
-  byte #%01000000 ;  #
-  byte #%01111111 ;  #######
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
+  byte #%01000000 ;  #
+  byte #%01000000 ;  #
+  byte #%01111111 ;  #######
 
 Number7:
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
 
 Number8:
-  byte #%01111111 ;  #######
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01111111 ;  #######
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
 
 Number9:
-  byte #%01111111 ;  #######
-  byte #%01000001 ;  #     #
-  byte #%01000001 ;  #     #
-  byte #%01111111 ;  #######
-  byte #%00000001 ;        #
-  byte #%00000001 ;        #
-  byte #%01111111 ;  #######
   byte #0 ; All of the digits need to be a power of 2 after the previous, so add an empty byte
+  byte #%01111111 ;  #######
+  byte #%00000001 ;        #
+  byte #%00000001 ;        #
+  byte #%01111111 ;  #######
+  byte #%01000001 ;  #     #
+  byte #%01000001 ;  #     #
+  byte #%01111111 ;  #######
 
   org $1400
   rorg $F400
