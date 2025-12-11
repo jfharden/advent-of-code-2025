@@ -80,6 +80,138 @@ Start:
   BANK_SWITCH_TO_0   ; All banks must contain this as the first instruction, no matter which bank is active at boot we will switch to bank 1
   CLEAN_START
 
+  jmp BeginProper
+
+; Note: This subroutine needs to be in the preamble since it will switch banks back and forward
+; Takes 4 Scanlines AND (including RTS)
+;   32 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
+;   44 cycles if input has not been totally exhausted, and incrementing the pointer does require a carry
+;   12 cycles if input has not been totally exhausted
+ReadLineIntoRam:
+  BANK_SWITCH ; 7
+
+.ReadNextLine:
+  ; Zero out the number of notches to move
+  lda #0                            ; 2   - 2
+  sta NotchesToMove                 ; 3   - 5
+  sta NotchesToMove+1               ; 3   - 8
+  sta NotchesToMove+2               ; 3   - 11
+
+  ; Read the next line of puzzle input
+  ldy #0                            ; 2   - 13
+
+  ; Read the direction (if it's a binary 0 then we have reached the end of the puzzlue input)
+  lda (CurrentInputPosPointer),Y    ; 5   - 18 - y is always 0 here so we cannot cross a page boundary
+  cmp #90                           ; 2   - 20     - An ascii Z
+  bne .Incomplete                   ; 2+1 - 22 (Complete) /23 (Incomplete)
+  lda #1                            ; 2   - 24
+  sta Complete                      ; 3   - 27
+  jmp .InputReadTotallyComplete     ; 3   - 30
+
+; Reach here at 23
+.Incomplete:
+  sta Direction                     ; 3   - 26
+
+  NEXT_SCANLINE ; 1 SCANLINES USED
+.FindEndOfNumber:
+  ; Read forward until we hit an ascii char which is above the number range
+                                    ; NOTE All cycle times recorded without a page boundary cross. Need to add 1-4 for potential page boundary crosses
+                                    ; C   - C in loop 1st::1d::2d::3d - C in total incl pre-loop - Notes
+  iny                               ; 2   -  2 :: 16 :: 30 :: 43 -
+  lda (CurrentInputPosPointer),Y    ; 5/6 -  7 :: 21 :: 35 :: 48 - (If the earlier LDA was across a boundary this one cannot be) - Load the character at the new read position
+  cmp #58                           ; 2   -  9 :: 23 :: 37 :: 50 - If the char is higher in the ascii table than the numbers (one of L R or N in our case)
+  bpl .EndOfNumberFound             ; 2+1 - 11 :: 25 :: 38 :: 52 - then number end found - First time through this CANNOT be the end
+  jmp .FindEndOfNumber              ; 3   - 14 :: 28 :: 41 :: __ -
+
+; Can reach here at one of (add between 1 and 4 if any page boundary was crossed) PLES 5 from next_scanline
+; If 1 digits 26/27-28 (without page boundary cross/with page boundary cross(es))
+; If 2 digits 38/39-41 (without page boundary cross/with page boundary cross(es))
+; If 3 digits 53/54-57 (without page boundary cross/with page boundary cross(es))
+
+; 62 is the Worst case with max page boundarys and 5 from NEXT_SCANLINE
+.EndOfNumberFound
+  NEXT_SCANLINE              ; 5 -  5 - 2 SCANLINES USED
+  cmp #78                    ; 2 -  7 - If the char is a carriage return, then next bank advance needs to happen later
+  bne .ContinueReadingNumber ; 2 -  9
+  lda #0                     ; 2 - 11
+  sta NextBank               ; 3 - 14 - Set the indicator that the next bank needs to be advanced to
+
+; Here in 10 if no next bank indication
+; Here in 14 if next bank indicated
+.ContinueReadingNumber
+  ; This is a VERY unsafe assumption that there can't be more than 3 digits in the input line
+  ; But there isn't in mine, so it will do
+  ;                                 ; C - Total if no next bank/Total if next bank - Notes
+  sty IncrementBy                   ; 3 - 13/17 - Will be used later to increment the CurrentInputPosPointer to the start of the next input
+  dey                               ; 2 - 15/19 - Y is currently pointing to the char after the number, move it to the last digit
+
+  ldx #2                            ; 2 - 17/21
+
+
+  NEXT_SCANLINE                     ; 3 SCALINES USED
+  ; Total cycles in worst case is 56 from the loop below
+  ; Cycles for this loop (totals include the 14 from above):
+  ;    1 Digits Read - 33 - 47
+  ;    2 Digits Read - 55 - 69
+  ;    3 Digits Read - 77 - 91
+.ReadNumber:
+                                    ; C   - C in loop 1d::2d::3d - C in total incl pre-loop - Notes
+                                    ; Note all recorded without page boundary cross, need to add between 1 and 3 if there was a page boundary cross
+  lda (CurrentInputPosPointer),Y    ; 5/6 -  5 :: 24 :: 43 - Load the character at the new read position
+  sta NotchesToMove,X               ; 5   - 10 :: 29 :: 48 -
+  dey                               ; 2   - 12 :: 31 :: 50 - Move read position back 1 (beq sets Z flag)
+  beq .NumberReadComplete            ; 2+1 - 14 :: 33 :: 53 - If read position is now 0, read is complete
+  dex                               ; 2   - 16 :: 35 :: __ - Decrease the storage position
+  jmp .ReadNumber                   ; 3   - 19 :: 38 :: __
+
+; Can reach here at one of (add between 1 and 3 if any page boundary was crossed) PLUS 5 from next scanline above
+; If 1 digits 14/15 (without page boundary cross/with page boundary cross(es))
+; If 2 digits 33/34-35 (without page boundary cross/with page boundary cross(es))
+; If 3 digits 53/54-56 (without page boundary cross/with page boundary cross(es))
+; Worst case 63 cycles: 56 if 3 digits and 3 page broundary crosses + 5 from previous NEXT_SCANLINE + 2 from following NEXT_SCANLINE = 63
+.NumberReadComplete:
+  NEXT_SCANLINE                 ; 5   - 5  - 4 SCANLINES USED
+
+  lda NextBank                  ; 3   - 8  - Load next bank indicator
+  bne .IncrementPointer         ; 2+1 - 10 - If it's not zero then skip to increment the pointer
+
+  inc NextBank                  ; 5   - 15 - Set NextBank indicator back to 1 to indicate we don't need to increment
+  inc BankNumber                ; 5   - 20
+  lda #<PuzzleInputBank1        ; 3   - 23
+  sta CurrentInputPosPointer    ; 3   - 26
+  lda #>PuzzleInputBank1        ; 3   - 29
+  sta CurrentInputPosPointer+1  ; 3   - 32
+  jmp .MacroOver                ; 3   - 35
+
+; Reach here in 11 cycles
+.IncrementPointer
+  clc                             ; 2      - 13
+  lda CurrentInputPosPointer      ; 3      - 16
+  adc IncrementBy                 ; 3      - 19
+  sta CurrentInputPosPointer      ; 3      - 22
+  bcc .MacroOver                  ; 2+1    - 24/25
+
+  clc                             ; 2      - 26
+  lda CurrentInputPosPointer+1    ; 3      - 29
+  adc #1                          ; 2      - 31
+  sta CurrentInputPosPointer+1    ; 3      - 34
+  jmp .MacroOver                  ; 3      - 37
+
+
+; Reached here at 0 SCANLINES and 30 cycles:
+.InputReadTotallyComplete ; If the input is exhausted we reach here With either 30 or 31 scanlines used
+  BANK_SWITCH_TO_0                ; 4      - 34
+  jmp LoopVBlank                  ; 3      - 37 - Skip all further processing and jump skipping the remaining veritcal blank
+
+; Reached here in 4 Scanlines AND
+;   25 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
+;   37 cycles if input has not been totally exhausted, and incrementing the pointer does require a carry
+;    5 cycles if input has not been totally exhausted
+.MacroOver
+  BANK_SWITCH_TO_0 ; 4
+  rts              ; 3
+
+BeginProper:
   lda #$0E
   sta COLUP0  ; Set the colour of the player 1 bitmap to white
   sta COLUP1  ; Set the colour of the player 2 bitmap to white
@@ -156,11 +288,11 @@ NextFrame:
   PREAMBLE
 
 NotComplete:
-  READ_LINE_INTO_RAM    ; 4 scanlines - 9/39 - 9/39
+  jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
 
   NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
 
-  PROCESS_LINE
+  jsr ProcessLine
 
 LoopVBlank:
   ; Loop away the remaining scanlines until the visible portion of the display
@@ -302,6 +434,86 @@ SetGraphicsPointers:
   asl                           ; 2 - 79 - starts
   sta DigitBitmapPointer6       ; 3 - 82
 
+  rts
+
+; Takes  1 - 4 Scanlines & 8 cycles (including 3 for the RTS)
+ProcessLine:
+  lda Complete                 ; 3   - 3
+  beq .ContinueToCountNotches  ; 2+1 - 5
+  jmp .EndLineProcessing       ; 3   - 8
+
+; Addive here at 6 cycles
+.ContinueToCountNotches:
+  NEXT_SCANLINE         ; 2 previous, 5 next - 1 SCANLINES - Such a waste, but it's the only sane way to cope with ADD_WHOLE_ROTATIONS wide variance
+
+  ADD_WHOLE_ROTATIONS   ; 10 to 66 - Direction doesn't matter, add whole rotations
+
+  NEXT_SCANLINE         ; 2 previous, 5 next - 2 SCANLINES
+
+  CALCULATE_NUMBER_OF_TENS_AND_UNITS    ; 23/31 - 28/36 (incl 5 from next scaline above) - Load the BCD tens and units from the current line
+  bne .CheckDirection                   ; 2+1   - 38/39 - If the number of notches isn't 0 then there's nothing left to do, just end processing
+  jmp .EndLineProcessing                ; 3     - 41
+
+.CheckDirection:
+  ; Left or right - cycles only counting worst case from CALCULATE_NUMBER_OF_TENS_AND_UNITS
+  ldx Direction                         ; 3   - 42
+  cpx #$4c                              ; 2   - 44    - L in ascii
+  beq .LeftTurn                         ; 2+1 - 46/47
+  jmp .RightTurn                        ; 3   - 49    - If it wasn't left, it must be right so just jump
+
+; Arrive here at 2 Scanlines & 47 cycles
+; The accumulator contains the number of tens and units in BCD
+.LeftTurn:
+  sta Temp                              ; 3     - 49
+  lda CurrentPosition                   ; 3     - 52
+  beq .JustSubtractLeftTurn             ; 2+1   - 54/55  - If the current position was ALREADY 0 it's already been accounted for
+                                        ;                - so just do the subtraction, but don't increment the counter for having passed 0
+
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN   ; 12    - 66
+  bcc .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 68/69 - If the carry flag was unset by the subtraction then we rolled over and passed zero
+  beq .LandedOnOrPassedZeroTurningLeft  ; 2+1   - 70/71 - If we didn't land on zero then skip
+  NEXT_SCANLINE                         ; 2 previous, 5 next - 3 Scanlines
+  jmp .EndLineProcessing                ; 3     - 7
+
+; Arrive here at 2 Scanlines & 69 OR 71 Cycles
+.LandedOnOrPassedZeroTurningLeft:
+  NEXT_SCANLINE                       ; 2 previous, 5 next - 3 SCANLINES
+  lda #1                              ; 2   -  7
+  sta IncrementBy                     ; 3   - 10
+  LANDED_ON_ZERO                      ; 16 to 56 - 26-66
+  jmp .EndLineProcessing              ; 3        - 29-69
+
+; Arrive here at 2 Scalines & 55 cycles
+.JustSubtractLeftTurn:
+  SUBTRACT_CURRENT_POSITION_LEFT_TURN ; 12  - 67
+  jmp .EndLineProcessing              ; 3   - 70
+
+; Arrive here at 2 Scanlines & 49 cycles
+; The accumulator contains the number of tens and units in BCD
+.RightTurn:
+  sta Temp              ; 3   - 52
+  lda CurrentPosition   ; 3   - 55
+  sed                   ; 2   - 57
+  clc                   ; 2   - 59
+  adc Temp              ; 3   - 62
+  sta CurrentPosition   ; 3   - 65
+  cld                   ; 2   - 67
+  bcc .EndLineProcessing ; 2+1 - 69/70 ; No carry meaning we didn't go from 99 to 0, so no landing on 0
+
+  NEXT_SCANLINE         ; 2 previous, 5 next, 3 SCANLINES
+  lda #1                ; 2   - 7  (including 5 from NEXT_SCANLINE)
+  sta IncrementBy       ; 3   - 10
+  LANDED_ON_ZERO        ; 16 to 54 - 26 to 64
+
+; Arrive here at:
+;   0 Scanlines &     8 cycles if processing is already complete
+;   2 Scanlines &    41 cycles if there were only whole rotations (e.g. if the number of turns is evenly divisible by 100)
+;   2 Scanlines &    70 cycles if the current position was already 0 when the dial was turned left
+;   3 Scanlines &     7 cycles if there were tens and units of turns which DIDN'T land on or cross zero
+;   3 Scanlines & 29-69 cycles if if a left turn landed on, or crossed zero
+;   3 Scanlines & 26-64 cycles if it was a right turn
+.EndLineProcessing
+  NEXT_SCANLINE
   rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
