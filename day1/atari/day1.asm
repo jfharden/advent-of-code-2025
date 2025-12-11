@@ -289,11 +289,12 @@ NextFrame:
 
 ProcessInput:
   lda ScanlineNumber
-  cmp #10               ; If we have at least 10 scanlines left we can process more input
+  cmp #9                ; If we have at least 9 scanlines left we can process more input
   bmi LoopVBlank        ; Otherwise just exhaust the rest of the scanlines
 
   jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
-  NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
+  lda Complete
+  bne LoopVBlank
   jsr ProcessLine       ; 4 scanlines
   jmp ProcessInput
 
@@ -367,10 +368,25 @@ SixDigitDisplayLoop:
   sbc #9             ; 8 lines of graphics, 1 lines of WSYNC prior to graphics
   sta ScanlineNumber
 
+  lda Complete
+  bne ScanToEndOfVisible
+
+ProcessInputDuringVisibleArea:
+  lda ScanlineNumber
+  cmp #9
+  bpl ScanToEndOfVisible
+
+  jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
+  lda Complete
+  bne ScanToEndOfVisible
+  jsr ProcessLine       ; 4 scanlines
+  jmp ProcessInputDuringVisibleArea
+
 ScanToEndOfVisible:
   NEXT_SCANLINE           ; 2 previous scanline, 5 next scanline
   bne ScanToEndOfVisible  ; 2+1
 
+Overscan:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Draw the Overscan - turn on vertical blank first
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -381,15 +397,17 @@ ScanToEndOfVisible:
   sta ScanlineNumber
 
   lda Complete
-  beq FinishOverscan
+  beq ProcessInputInOverscan
+  jmp FinishOverscan
 
 ProcessInputInOverscan:
   lda ScanlineNumber
-  cmp #10
+  cmp #9
   bmi FinishOverscan
 
   jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
-  NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
+  lda Complete
+  bne FinishOverscan
   jsr ProcessLine       ; 4 scanlines
   jmp ProcessInputInOverscan
 
