@@ -201,7 +201,7 @@ ReadLineIntoRam:
 ; Reached here at 0 SCANLINES and 30 cycles:
 .InputReadTotallyComplete ; If the input is exhausted we reach here With either 30 or 31 scanlines used
   BANK_SWITCH_TO_0                ; 4      - 34
-  jmp LoopVBlank                  ; 3      - 37 - Skip all further processing and jump skipping the remaining veritcal blank
+  rts
 
 ; Reached here in 4 Scanlines AND
 ;   25 cycles if input has not been totally exhausted, and incrementing the pointer does not require a carry
@@ -377,12 +377,29 @@ ScanToEndOfVisible:
   lda #2
   sta VBLANK
 
-  ldx #30
-LoopOverscan:
-  sta WSYNC
-  dex
-  bne LoopOverscan
+  lda #30
+  sta ScanlineNumber
 
+  lda Complete
+  beq FinishOverscan
+
+ProcessInputInOverscan:
+  lda ScanlineNumber
+  cmp #10
+  bmi FinishOverscan
+
+  jsr ReadLineIntoRam   ; 4 scanlines - 12/44 - 12/44
+  NEXT_SCANLINE         ; 2 previous scanline, 5 next scanline
+  jsr ProcessLine       ; 4 scanlines
+  jmp ProcessInputInOverscan
+
+FinishOverscan:
+  lda ScanlineNumber
+  beq OverscanComplete
+  NEXT_SCANLINE
+  jmp FinishOverscan
+  
+OverscanComplete:
   jmp NextFrame
 
 ; Takes 88 cycles including RTS
